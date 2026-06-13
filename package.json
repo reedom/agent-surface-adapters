@@ -1,7 +1,7 @@
 {
-  "name": "cmux-claude-adapter",
+  "name": "agent-surface-adapters",
   "version": "0.1.0",
-  "description": "ai-workflow-engine CliAdapter that runs interactive claude on a cmux surface, wired to agentbus",
+  "description": "ai-workflow-engine CliAdapters that run interactive agent CLIs (claude, ...) on terminal surfaces (cmux, ...), wired to agentbus",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
