@@ -1,0 +1,23 @@
+{
+  "name": "cmux-claude-adapter",
+  "version": "0.1.0",
+  "description": "ai-workflow-engine CliAdapter that runs interactive claude on a cmux surface, wired to agentbus",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "smoke": "pnpm build && node dist/smoke.js"
+  },
+  "dependencies": {
+    "ai-workflow-engine": "file:../ai-workflow-engine"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
