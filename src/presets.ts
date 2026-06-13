@@ -1,4 +1,5 @@
 import type { CliAdapter } from 'ai-workflow-engine';
+import type { SurfaceRef } from './core/types.js';
 import { makeSurfaceAdapter } from './core/adapter.js';
 import { makeCmuxHost } from './hosts/cmux.js';
 import { makeClaudeProfile } from './agents/claude/profile.js';
@@ -16,6 +17,7 @@ export interface CmuxClaudeOptions {
   cmuxWindow?: string;
   newRunId?: () => string;
   newSessionId?: () => string;
+  onSurface?: (surface: SurfaceRef) => void;
 }
 
 export function makeCmuxClaudeAdapter(opts: CmuxClaudeOptions): CliAdapter {
@@ -28,5 +30,6 @@ export function makeCmuxClaudeAdapter(opts: CmuxClaudeOptions): CliAdapter {
     runsDir: opts.runsDir,
     newRunId: opts.newRunId,
     newSessionId: opts.newSessionId,
+    onSurface: opts.onSurface,
   });
 }

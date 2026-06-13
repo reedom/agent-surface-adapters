@@ -51,4 +51,21 @@ describe('makeSurfaceAdapter', () => {
     const result = await a.run(spec());
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
   });
+  it('invokes onSurface with the launched surface ref before the result resolves', async () => {
+    const knownSurface: SurfaceRef = { raw: 'OK workspace:7', ref: 'workspace:7' };
+    const host = fakeHost(async (): Promise<SurfaceRef> => knownSurface);
+    const onSurface = vi.fn();
+    const a = makeSurfaceAdapter({
+      host,
+      agent: fakeAgent(),
+      awaitResult: async () => ({ text: 'done' }),
+      onSurface,
+      runsDir,
+      newRunId: () => 'run-3',
+      newSessionId: () => 'sess-3',
+    });
+    await a.run(spec());
+    expect(onSurface).toHaveBeenCalledOnce();
+    expect(onSurface).toHaveBeenCalledWith(knownSurface);
+  });
 });

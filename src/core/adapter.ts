@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AgentResult, AgentSpec, CliAdapter, EscalationPolicy } from 'ai-workflow-engine';
-import type { AgentProfile, SurfaceHost } from './types.js';
+import type { AgentProfile, SurfaceHost, SurfaceRef } from './types.js';
 import { agentbusDirective, composeSystemPrompt } from './prompt.js';
 import { launcherScript, shellQuote } from './launcher.js';
 
@@ -21,6 +21,8 @@ export interface SurfaceAdapterDeps {
   runsDir?: string;
   newRunId?: () => string;
   newSessionId?: () => string;
+  /** Invoked with the surface ref as soon as it is launched (before the result arrives), so the caller can target it for cancellation/close. */
+  onSurface?: (surface: SurfaceRef) => void;
 }
 
 export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
@@ -52,6 +54,7 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
       writeFileSync(scriptPath, launcherScript(deps.agent.bin, args));
 
       const surface = await deps.host.launch({ cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}` });
+      deps.onSurface?.(surface);
       const result = await deps.awaitResult(runId);
       const usage = deps.agent.readUsage(sessionId, spec.cwd) ?? { inputTokens: 0, outputTokens: 0 };
 
