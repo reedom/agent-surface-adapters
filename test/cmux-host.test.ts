@@ -24,4 +24,17 @@ describe('makeCmuxHost', () => {
     const host = makeCmuxHost({ runner });
     await expect(host.launch({ command: 'x' })).rejects.toThrow(/new-workspace failed/);
   });
+
+  it('prepends global --socket/--password and adds --window to new-workspace', async () => {
+    const runner = vi.fn() as unknown as RunFn;
+    vi.mocked(runner).mockResolvedValue({ stdout: 'OK workspace:2', stderr: '', code: 0 });
+    const host = makeCmuxHost({ runner, socketPath: '/tmp/cmux.sock', password: 'pw', window: 'window:1' });
+    await host.launch({ cwd: '/repo', command: 'bash /run/launch.sh' });
+    const args = vi.mocked(runner).mock.calls[0][1];
+    // global options precede the subcommand
+    expect(args.slice(0, 4)).toEqual(['--socket', '/tmp/cmux.sock', '--password', 'pw']);
+    expect(args).toContain('new-workspace');
+    expect(args).toContain('--window');
+    expect(args).toContain('window:1');
+  });
 });
