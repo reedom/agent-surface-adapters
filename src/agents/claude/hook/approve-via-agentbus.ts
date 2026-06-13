@@ -15,25 +15,68 @@ function takeArg(argv: string[], name: string): string | undefined {
 }
 
 /**
- * True when the Bash command is the agent's own agentbus reporting to nagiInstance.
- * Matched tightly (the agentbus binary as a command word, a reporting verb, the
- * recipient) so the approval gate is not widened to arbitrary commands.
+ * Split a command into its top-level pipe segments, scanning OUTSIDE single/double
+ * quotes. Returns null when a top-level shell control operator (`;` `&&` `||` `&`
+ * backtick `$(` newline, or an unterminated quote) appears — i.e. the command is
+ * more than one simple pipeline and must never be treated as a pure self-report.
+ */
+function topLevelPipeline(command: string): string[] | null {
+  const segments: string[] = [];
+  let current = '';
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    const next = command[i + 1];
+    if (quote) {
+      if (ch === quote) quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ';' || ch === '\n' || ch === '`') return null;
+    if (ch === '$' && next === '(') return null;
+    if (ch === '&') return null; // covers `&` and `&&`
+    if (ch === '|' && next === '|') return null; // `||`
+    if (ch === '|') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (quote) return null; // unterminated quote
+  segments.push(current);
+  return segments;
+}
+
+/**
+ * True when the Bash command is SOLELY the agent's own agentbus reporting to
+ * nagiInstance: a single simple pipeline of an optional printf/echo feeder piped
+ * into one `agentbus send <nagi>` / `agentbus reply <id> <nagi>` / `agentbus
+ * publish`. Any top-level chaining means it is not a pure self-report (the gate is
+ * never widened to let an arbitrary command ride along).
  */
 export function isSelfReport(toolName: string, toolInput: unknown, nagiInstance: string): boolean {
   if (toolName !== 'Bash') return false;
   const command = (toolInput as { command?: unknown })?.command;
   if (typeof command !== 'string') return false;
-  // `agentbus <verb> ...` where agentbus starts a command segment (start, or after | ; && ).
-  const re = new RegExp(
-    String.raw`(^|[|;&]\s*)agentbus\s+(send|reply|publish)\b([^|;&]*)`,
-  );
-  const m = command.match(re);
+  const segments = topLevelPipeline(command);
+  if (!segments) return false;
+  const trimmed = segments.map((s) => s.trim());
+  if (2 < trimmed.length) return false; // at most: `<feeder> | agentbus ...`
+  if (trimmed.length === 2 && !/^(printf|echo)\b/.test(trimmed[0] ?? '')) return false;
+  const report = trimmed[trimmed.length - 1] ?? '';
+  const m = report.match(/^agentbus\s+(send|reply|publish)\b(.*)$/);
   if (!m) return false;
-  if (m[2] === 'publish') return true; // broadcast: no recipient arg
-  if (m[2] === 'reply') return new RegExp(String.raw`\b${nagiInstance}\b`).test(m[3] ?? '');
-  // send <to>: the recipient is the first non-flag token after `send`
-  const rest = (m[3] ?? '').trim().split(/\s+/);
-  return rest[0] === nagiInstance;
+  const verb = m[1];
+  const tokens = (m[2] ?? '').trim().split(/\s+/).filter((t) => t.length !== 0);
+  if (verb === 'publish') return true;
+  if (verb === 'reply') return tokens[1] === nagiInstance; // reply <request_id> <from>
+  return tokens[0] === nagiInstance; // send <to>
 }
 
 function decisionJson(behavior: 'allow' | 'deny', reason: string): string {
