@@ -23,6 +23,7 @@ describe('writeApprovalSettings', () => {
       runDir: dir, runId: 'run-7', nagiInstance: 'nagi',
       policy: { timeoutMs: 1000, onTimeout: 'wait' },
       hookCommand: '"/usr/bin/node" "/pkg/dist/hook/approve-via-agentbus.js"',
+      stopHookCommand: '"/usr/bin/node" "/pkg/dist/hook/report-result-via-agentbus.js"',
     });
     const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
     expect(meta).toEqual({ runId: 'run-7', nagiInstance: 'nagi', timeoutMs: 86_400_000 });
@@ -34,6 +35,12 @@ describe('writeApprovalSettings', () => {
     expect(hook.timeout).toBe(86_400);
     expect(hook.command).toContain('approve-via-agentbus.js');
     expect(hook.command).toContain(`--meta "${join(dir, 'meta.json')}"`);
+
+    // Stop hook reports the final result over agentbus.
+    const stop = settings.hooks.Stop[0].hooks[0];
+    expect(stop.type).toBe('command');
+    expect(stop.command).toContain('report-result-via-agentbus.js');
+    expect(stop.command).toContain(`--meta "${join(dir, 'meta.json')}"`);
   });
 
   it('writes the deny-policy timeout into both meta and the hook', () => {
@@ -41,6 +48,7 @@ describe('writeApprovalSettings', () => {
       runDir: dir, runId: 'run-8', nagiInstance: 'nagi',
       policy: { timeoutMs: 5500, onTimeout: 'deny' },
       hookCommand: '"/usr/bin/node" "/pkg/dist/hook/approve-via-agentbus.js"',
+      stopHookCommand: '"/usr/bin/node" "/pkg/dist/hook/report-result-via-agentbus.js"',
     });
     const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
     expect(meta.timeoutMs).toBe(5500);
