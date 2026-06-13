@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { askApproval, awaitInbox, parseAskReply, register, reply, send } from '../src/agentbus.js';
-import type { RunFn } from '../src/run.js';
+import { askApproval, awaitInbox, parseAskReply, register, reply, send } from '../src/core/agentbus.js';
+import type { RunFn } from '../src/core/run.js';
 
 const ok = (stdout = '') => ({ stdout, stderr: '', code: 0 });
 

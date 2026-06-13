@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { askApproval, type Decision } from '../agentbus.js';
+import { askApproval, type Decision } from '../../../core/agentbus.js';
 
 type AskFn = (to: string, from: string, timeoutMs: number, payload: unknown) => Promise<Decision>;
 

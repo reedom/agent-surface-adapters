@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hookTimeoutSeconds, writeApprovalSettings } from '../src/settings.js';
+import { hookTimeoutSeconds, writeApprovalSettings } from '../src/agents/claude/settings.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'set-')); });

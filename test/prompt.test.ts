@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentbusDirective, composeSystemPrompt } from '../src/prompt.js';
+import { agentbusDirective, composeSystemPrompt } from '../src/core/prompt.js';
 
 describe('agentbusDirective', () => {
   it('embeds the runId, recipient, and both message shapes', () => {

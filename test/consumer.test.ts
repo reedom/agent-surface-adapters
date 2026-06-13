@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { consumeOnce } from '../src/consumer.js';
-import type { RunFn } from '../src/run.js';
+import { consumeOnce } from '../src/core/consumer.js';
+import type { RunFn } from '../src/core/run.js';
 
 function runnerYielding(envelopes: unknown[]): RunFn {
   return vi.fn(async (_cmd: string, args: string[]) => {

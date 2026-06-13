@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findTranscript, readUsage } from '../src/result.js';
+import { findTranscript, readUsage } from '../src/agents/claude/result.js';
 
 let base: string;
 beforeEach(() => {

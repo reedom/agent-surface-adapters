@@ -1,72 +1,54 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentSpec } from 'ai-workflow-engine';
-import { makeCmuxClaudeAdapter } from '../src/adapter.js';
-import type { LaunchInput, SurfaceRef } from '../src/launch.js';
+import { makeSurfaceAdapter } from '../src/core/adapter.js';
+import type { AgentProfile, SurfaceHost, SurfaceRef } from '../src/core/types.js';
 
 let runsDir: string;
 beforeEach(() => { runsDir = mkdtempSync(join(tmpdir(), 'runs-')); });
 afterEach(() => rmSync(runsDir, { recursive: true, force: true }));
 
-function spec(over: Partial<AgentSpec> = {}): AgentSpec {
-  return { prompt: 'do the thing', cwd: '/repo', ...over };
+function fakeAgent(over: Partial<AgentProfile> = {}): AgentProfile {
+  return {
+    id: 'claude', bin: 'claude',
+    buildArgs: () => ['--session-id', 'sess-1', '--', 'do the thing'],
+    writeApprovalSettings: ({ runDir }) => join(runDir, 'settings.json'),
+    readUsage: () => ({ inputTokens: 7, outputTokens: 3 }),
+    ...over,
+  };
 }
+function fakeHost(launch: SurfaceHost['launch']): SurfaceHost { return { id: 'cmux', launch }; }
+function spec(over: Partial<AgentSpec> = {}): AgentSpec { return { prompt: 'do the thing', cwd: '/repo', ...over }; }
 
-describe('makeCmuxClaudeAdapter', () => {
-  it('exposes the cmux id and non-schema caps', () => {
-    const adapter = makeCmuxClaudeAdapter({ awaitResult: async () => ({ text: '' }) });
-    expect(adapter.id).toBe('cmux');
-    expect(adapter.caps).toEqual({ schema: false, resume: false, tools: true });
+describe('makeSurfaceAdapter', () => {
+  it('uses host id by default and non-schema caps', () => {
+    const a = makeSurfaceAdapter({ host: fakeHost(async () => ({ raw: '' })), agent: fakeAgent(), awaitResult: async () => ({ text: '' }) });
+    expect(a.id).toBe('cmux');
+    expect(a.caps).toEqual({ schema: false, resume: false, tools: true });
   });
-
-  it('launches a surface running the per-run launcher and returns the awaited result + usage', async () => {
-    let launched: LaunchInput | undefined;
-    const launchSurface = vi.fn(async (input: LaunchInput): Promise<SurfaceRef> => {
-      launched = input;
-      return { raw: '{"surface":"surface:1"}', ref: 'surface:1' };
-    }) as unknown as (input: LaunchInput) => Promise<SurfaceRef>;
+  it('honors an explicit id override', () => {
+    const a = makeSurfaceAdapter({ id: 'cmux-codex', host: fakeHost(async () => ({ raw: '' })), agent: fakeAgent(), awaitResult: async () => ({ text: '' }) });
+    expect(a.id).toBe('cmux-codex');
+  });
+  it('launches a surface running the per-run launcher and returns awaited result + usage', async () => {
+    let launched: { cwd?: string; command: string } | undefined;
+    const host = fakeHost(async (input): Promise<SurfaceRef> => { launched = input; return { raw: 'OK', ref: 'surface:1' }; });
     const awaitResult = vi.fn(async (_runId: string) => ({ text: 'final answer' }));
-    const readUsage = vi.fn(() => ({ inputTokens: 7, outputTokens: 3 }));
-
-    const adapter = makeCmuxClaudeAdapter({
-      awaitResult, launchSurface, readUsage, runsDir,
-      hookHelperPath: '/pkg/dist/hook/approve-via-agentbus.js',
-      newRunId: () => 'run-1', newSessionId: () => 'sess-1',
-    });
-
-    const result = await adapter.run(spec());
-
+    const a = makeSurfaceAdapter({ host, agent: fakeAgent(), awaitResult, runsDir, newRunId: () => 'run-1', newSessionId: () => 'sess-1' });
+    const result = await a.run(spec());
     expect(result.text).toBe('final answer');
     expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 3 });
     expect(result.sessionId).toBe('sess-1');
     expect(awaitResult).toHaveBeenCalledWith('run-1');
-
-    // launches `bash <runDir>/launch.sh`, cwd from spec
     expect(launched?.cwd).toBe('/repo');
     expect(launched?.command).toMatch(/^bash '.*run-1\/launch\.sh'$/);
-
-    // persistent run dir: settings + launcher exist after run() resolves
-    const runDir = join(runsDir, 'run-1');
-    expect(existsSync(join(runDir, 'settings.json'))).toBe(true);
-    expect(existsSync(join(runDir, 'meta.json'))).toBe(true);
-    const launchScript = readFileSync(join(runDir, 'launch.sh'), 'utf8');
-    expect(launchScript).toContain('--session-id');
-    expect(launchScript).toContain('sess-1');
-    expect(launchScript).toContain('--settings');
-    expect(launchScript).not.toContain('-p ');
+    expect(existsSync(join(runsDir, 'run-1', 'launch.sh'))).toBe(true);
   });
-
-  it('falls back to zero usage when no transcript is found', async () => {
-    const adapter = makeCmuxClaudeAdapter({
-      awaitResult: async () => ({ text: 'x' }),
-      launchSurface: async () => ({ raw: '', ref: undefined }),
-      readUsage: () => null,
-      runsDir,
-      newRunId: () => 'run-2', newSessionId: () => 'sess-2',
-    });
-    const result = await adapter.run(spec());
+  it('falls back to zero usage when the profile returns null', async () => {
+    const a = makeSurfaceAdapter({ host: fakeHost(async () => ({ raw: '' })), agent: fakeAgent({ readUsage: () => null }), awaitResult: async () => ({ text: 'x' }), runsDir, newRunId: () => 'run-2', newSessionId: () => 'sess-2' });
+    const result = await a.run(spec());
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
   });
 });

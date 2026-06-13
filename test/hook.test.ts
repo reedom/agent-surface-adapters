@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runApprovalHook } from '../src/hook/approve-via-agentbus.js';
+import { runApprovalHook } from '../src/agents/claude/hook/approve-via-agentbus.js';
 
 let dir: string;
 let metaPath: string;

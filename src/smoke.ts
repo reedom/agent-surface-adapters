@@ -1,8 +1,7 @@
-import { register } from './agentbus.js';
-import { startConsumer } from './consumer.js';
-import { makeCmuxClaudeAdapter } from './adapter.js';
-import type { Envelope } from './agentbus.js';
-import { fileURLToPath } from 'node:url';
+import { register } from './core/agentbus.js';
+import { startConsumer } from './core/consumer.js';
+import { makeCmuxClaudeAdapter } from './presets.js';
+import type { Envelope } from './core/agentbus.js';
 
 // Usage: pnpm smoke "<task prompt>" [cwd]
 async function main(): Promise<void> {
@@ -31,10 +30,8 @@ async function main(): Promise<void> {
     { intervalMs: 1000 },
   );
 
-  const hookHelperPath = fileURLToPath(new URL('./hook/approve-via-agentbus.js', import.meta.url));
   const adapter = makeCmuxClaudeAdapter({
     nagiInstance,
-    hookHelperPath,
     awaitResult: (runId: string) =>
       new Promise<{ text: string }>((resolve) => pending.set(runId, (text) => resolve({ text }))),
   });
