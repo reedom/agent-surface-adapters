@@ -1,1 +1,12 @@
-export {};
+export { makeCmuxClaudeAdapter } from './adapter.js';
+export type { CmuxAdapterDeps } from './adapter.js';
+export { startConsumer, consumeOnce } from './consumer.js';
+export type { ConsumerHandlers, ConsumerLoop } from './consumer.js';
+export { register, send, awaitInbox, reply, askApproval, parseAskReply } from './agentbus.js';
+export type { Envelope, Decision, AgentbusOpts } from './agentbus.js';
+export { launchSurface } from './launch.js';
+export type { LaunchInput, SurfaceRef } from './launch.js';
+export { readUsage, findTranscript } from './result.js';
+export type { AgentUsage } from './result.js';
+export { runProcess } from './run.js';
+export type { RunFn, RunResult, RunOpts } from './run.js';
