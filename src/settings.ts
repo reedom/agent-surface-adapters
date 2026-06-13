@@ -7,7 +7,12 @@ export interface ApprovalSettingsInput {
   runId: string;
   nagiInstance: string;
   policy: EscalationPolicy;
-  /** Full command prefix for the PreToolUse hook; `--meta <path>` is appended. */
+  /**
+   * Full command prefix for the PreToolUse hook; `--meta <path>` is appended.
+   * SECURITY: embedded verbatim into a shell-executed hook command, so it MUST
+   * be a trusted, already-quoted command string with no untrusted/user input
+   * (the adapter builds it from process.execPath + the hook helper path).
+   */
   hookCommand: string;
 }
 

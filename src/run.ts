@@ -14,6 +14,7 @@ export interface RunOpts {
 
 export type RunFn = (cmd: string, args: string[], opts?: RunOpts) => Promise<RunResult>;
 
+// Smoke-only dependency: no unit test by design (exercised via the CLI wrappers and the real smoke).
 export const runProcess: RunFn = (cmd, args, opts) =>
   new Promise((resolve, reject) => {
     const useStdin = opts?.input !== undefined;

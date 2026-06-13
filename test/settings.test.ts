@@ -35,4 +35,16 @@ describe('writeApprovalSettings', () => {
     expect(hook.command).toContain('approve-via-agentbus.js');
     expect(hook.command).toContain(`--meta "${join(dir, 'meta.json')}"`);
   });
+
+  it('writes the deny-policy timeout into both meta and the hook', () => {
+    const settingsPath = writeApprovalSettings({
+      runDir: dir, runId: 'run-8', nagiInstance: 'nagi',
+      policy: { timeoutMs: 5500, onTimeout: 'deny' },
+      hookCommand: '"/usr/bin/node" "/pkg/dist/hook/approve-via-agentbus.js"',
+    });
+    const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
+    expect(meta.timeoutMs).toBe(5500);
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    expect(settings.hooks.PreToolUse[0].hooks[0].timeout).toBe(66);
+  });
 });

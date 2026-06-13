@@ -20,7 +20,8 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
 }
 
 export function shellQuote(arg: string): string {
-  return `'${arg.split("'").join(`'\\''`)}'`;
+  const escaped = arg.replaceAll("'", `'\\''`);
+  return `'${escaped}'`;
 }
 
 export function launcherScript(bin: string, args: string[]): string {
