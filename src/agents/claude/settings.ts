@@ -14,6 +14,11 @@ export interface ApprovalSettingsInput {
    * (the adapter builds it from process.execPath + the hook helper path).
    */
   hookCommand: string;
+  /**
+   * Full command prefix for the Stop hook (final-result reporting); `--meta
+   * <path>` is appended. Same security contract as `hookCommand`.
+   */
+  stopHookCommand: string;
 }
 
 export function hookTimeoutSeconds(policy: EscalationPolicy): number {
@@ -42,6 +47,20 @@ export function writeApprovalSettings(input: ApprovalSettingsInput): string {
               type: 'command',
               command: `${input.hookCommand} --meta "${metaPath}"`,
               timeout: hookTimeoutSeconds(input.policy),
+            },
+          ],
+        },
+      ],
+      // At end of turn, report the final assistant message as the run's result
+      // over agentbus (deterministic reporting; does not block the agent).
+      Stop: [
+        {
+          matcher: '',
+          hooks: [
+            {
+              type: 'command',
+              command: `${input.stopHookCommand} --meta "${metaPath}"`,
+              timeout: 120,
             },
           ],
         },
