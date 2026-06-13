@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runApprovalHook } from '../src/agents/claude/hook/approve-via-agentbus.js';
+import { runApprovalHook, isSelfReport } from '../src/agents/claude/hook/approve-via-agentbus.js';
 
 let dir: string;
 let metaPath: string;
@@ -37,5 +37,35 @@ describe('runApprovalHook', () => {
 
   it('throws when --meta is missing', async () => {
     await expect(runApprovalHook([], hookStdin, { ask: vi.fn() })).rejects.toThrow(/--meta/);
+  });
+});
+
+describe('isSelfReport', () => {
+  it('matches the agent reporting to its own nagi instance', () => {
+    expect(isSelfReport('Bash', { command: `printf '%s' '{"type":"result"}' | agentbus send nagi --from ext:awe-1` }, 'nagi')).toBe(true);
+    expect(isSelfReport('Bash', { command: `agentbus reply msg_1 nagi` }, 'nagi')).toBe(true);
+    expect(isSelfReport('Bash', { command: `agentbus publish --from ext:awe-1` }, 'nagi')).toBe(true);
+  });
+  it('does NOT match genuine tools or other recipients', () => {
+    expect(isSelfReport('Bash', { command: 'rm -rf /tmp/x' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'agentbus send someone-else --from ext:awe-1' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Edit', { file_path: '/x' }, 'nagi')).toBe(false);
+    expect(isSelfReport('Bash', { command: 'echo agentbus send nagi' }, 'nagi')).toBe(false); // not actually invoking agentbus
+  });
+});
+
+describe('runApprovalHook self-report', () => {
+  it('auto-allows the agent reporting to nagi without calling ask', async () => {
+    const ask = vi.fn();
+    const stdin = JSON.stringify({ tool_name: 'Bash', tool_input: { command: `agentbus send nagi --from ext:awe-run-3` }, cwd: '/repo' });
+    const out = JSON.parse(await runApprovalHook(['--meta', metaPath], stdin, { ask }));
+    expect(out.hookSpecificOutput.permissionDecision).toBe('allow');
+    expect(ask).not.toHaveBeenCalled();
+  });
+  it('still asks for a genuine tool', async () => {
+    const ask = vi.fn().mockResolvedValue({ behavior: 'allow' });
+    const stdin = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: '/repo' });
+    await runApprovalHook(['--meta', metaPath], stdin, { ask });
+    expect(ask).toHaveBeenCalledOnce();
   });
 });

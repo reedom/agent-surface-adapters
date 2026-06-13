@@ -14,6 +14,28 @@ function takeArg(argv: string[], name: string): string | undefined {
   return argv[i + 1];
 }
 
+/**
+ * True when the Bash command is the agent's own agentbus reporting to nagiInstance.
+ * Matched tightly (the agentbus binary as a command word, a reporting verb, the
+ * recipient) so the approval gate is not widened to arbitrary commands.
+ */
+export function isSelfReport(toolName: string, toolInput: unknown, nagiInstance: string): boolean {
+  if (toolName !== 'Bash') return false;
+  const command = (toolInput as { command?: unknown })?.command;
+  if (typeof command !== 'string') return false;
+  // `agentbus <verb> ...` where agentbus starts a command segment (start, or after | ; && ).
+  const re = new RegExp(
+    String.raw`(^|[|;&]\s*)agentbus\s+(send|reply|publish)\b([^|;&]*)`,
+  );
+  const m = command.match(re);
+  if (!m) return false;
+  if (m[2] === 'publish') return true; // broadcast: no recipient arg
+  if (m[2] === 'reply') return new RegExp(String.raw`\b${nagiInstance}\b`).test(m[3] ?? '');
+  // send <to>: the recipient is the first non-flag token after `send`
+  const rest = (m[3] ?? '').trim().split(/\s+/);
+  return rest[0] === nagiInstance;
+}
+
 function decisionJson(behavior: 'allow' | 'deny', reason: string): string {
   return JSON.stringify({
     hookSpecificOutput: {
@@ -33,6 +55,9 @@ export async function runApprovalHook(argv: string[], stdinJson: string, deps: H
     timeoutMs: number;
   };
   const hook = JSON.parse(stdinJson) as { tool_name?: string; tool_input?: unknown; cwd?: string };
+  if (isSelfReport(hook.tool_name ?? '', hook.tool_input, meta.nagiInstance)) {
+    return decisionJson('allow', 'agentbus self-report');
+  }
   const ask = deps.ask ?? askApproval;
   const payload = {
     type: 'approval',
