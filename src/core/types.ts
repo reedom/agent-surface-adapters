@@ -8,6 +8,15 @@ export interface SurfaceRef {
 export interface SurfaceHost {
   readonly id: string;
   launch(input: { cwd?: string; command: string }): Promise<SurfaceRef>;
+  /**
+   * Type text into a live surface's REPL (no submit). Optional capability: a
+   * host driving a resident interactive agent implements it; a headless host
+   * has no REPL to type into and omits it. Used to feed the next instruction to
+   * a resident agent (vs. the agent polling agentbus for it).
+   */
+  send?(surfaceRef: string, text: string): Promise<void>;
+  /** Send a single key (e.g. 'Return') to a live surface, to submit input or control the REPL. */
+  sendKey?(surfaceRef: string, key: string): Promise<void>;
 }
 
 export interface AgentBuildInput {

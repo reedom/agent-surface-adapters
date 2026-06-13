@@ -37,4 +37,32 @@ describe('makeCmuxHost', () => {
     expect(args).toContain('--window');
     expect(args).toContain('window:1');
   });
+
+  it('send types text into a surface, with global opts preceding the subcommand', async () => {
+    const runner = vi.fn() as unknown as RunFn;
+    vi.mocked(runner).mockResolvedValue({ stdout: '', stderr: '', code: 0 });
+    const host = makeCmuxHost({ runner, socketPath: '/tmp/cmux.sock', password: 'pw' });
+    await host.send?.('surface:4', 'review the auth module');
+    const args = vi.mocked(runner).mock.calls[0][1];
+    expect(args).toEqual([
+      '--socket', '/tmp/cmux.sock', '--password', 'pw',
+      'send', '--surface', 'surface:4', 'review the auth module',
+    ]);
+  });
+
+  it('sendKey sends a single key to a surface', async () => {
+    const runner = vi.fn() as unknown as RunFn;
+    vi.mocked(runner).mockResolvedValue({ stdout: '', stderr: '', code: 0 });
+    const host = makeCmuxHost({ runner });
+    await host.sendKey?.('surface:4', 'Return');
+    const args = vi.mocked(runner).mock.calls[0][1];
+    expect(args).toEqual(['send-key', '--surface', 'surface:4', 'Return']);
+  });
+
+  it('send throws on non-zero exit', async () => {
+    const runner = vi.fn() as unknown as RunFn;
+    vi.mocked(runner).mockResolvedValue({ stdout: '', stderr: 'no such surface', code: 1 });
+    const host = makeCmuxHost({ runner });
+    await expect(host.send?.('surface:9', 'hi')).rejects.toThrow(/send failed/);
+  });
 });
