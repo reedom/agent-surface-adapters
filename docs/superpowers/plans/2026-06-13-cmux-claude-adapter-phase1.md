@@ -183,10 +183,10 @@ export const runProcess: RunFn = (cmd, args, opts) =>
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d) => {
+    child.stdout?.on('data', (d) => {
       stdout += d;
     });
-    child.stderr.on('data', (d) => {
+    child.stderr?.on('data', (d) => {
       stderr += d;
     });
     child.on('error', reject);
