@@ -38,6 +38,7 @@ export interface AgentProfile {
   writeApprovalSettings(input: {
     runDir: string;
     runId: string;
+    sessionId: string;
     nagiInstance: string;
     policy: EscalationPolicy;
   }): string;

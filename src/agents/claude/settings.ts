@@ -5,6 +5,8 @@ import type { EscalationPolicy } from 'ai-workflow-engine';
 export interface ApprovalSettingsInput {
   runDir: string;
   runId: string;
+  /** The agent's session id; recorded in meta so the Stop hook can resolve the transcript deterministically. */
+  sessionId: string;
   nagiInstance: string;
   policy: EscalationPolicy;
   /**
@@ -33,6 +35,7 @@ export function writeApprovalSettings(input: ApprovalSettingsInput): string {
     metaPath,
     JSON.stringify({
       runId: input.runId,
+      sessionId: input.sessionId,
       nagiInstance: input.nagiInstance,
       timeoutMs: input.policy.onTimeout === 'wait' ? 86_400_000 : input.policy.timeoutMs,
     }),
