@@ -1,13 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { send as agentbusSend } from '../../../core/agentbus.js';
+import { findTranscript } from '../result.js';
 
 type SendFn = (to: string, from: string, payload: unknown) => Promise<void>;
 
 export interface ResultHookDeps {
   send?: SendFn;
   readLastAssistantText?: (transcriptPath: string) => string | null;
+  findTranscript?: (sessionId: string) => string | null;
+  /** Test seam for the flush-retry delay. */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function takeArg(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(name);
@@ -60,10 +66,37 @@ export function lastAssistantText(transcriptPath: string): string | null {
 export async function runResultHook(argv: string[], stdinJson: string, deps: ResultHookDeps = {}): Promise<string> {
   const metaPath = takeArg(argv, '--meta');
   if (!metaPath) throw new Error('usage: report-result-via-agentbus --meta <file>');
-  const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { runId: string; nagiInstance: string };
+  const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as {
+    runId: string;
+    sessionId?: string;
+    nagiInstance: string;
+  };
   const hook = JSON.parse(stdinJson) as { transcript_path?: string };
   const readText = deps.readLastAssistantText ?? lastAssistantText;
-  const text = typeof hook.transcript_path === 'string' ? readText(hook.transcript_path) : null;
+  const resolveTranscript = deps.findTranscript ?? findTranscript;
+  const sleep = deps.sleep ?? defaultSleep;
+
+  // The hook-supplied path is primary; a deterministic lookup by sessionId is the
+  // fallback (the transcript file is named <sessionId>.jsonl). Retry briefly to
+  // absorb any lag between the turn ending and the final message being flushed.
+  const candidates = (): string[] => {
+    const list: string[] = [];
+    if (typeof hook.transcript_path === 'string' && hook.transcript_path.length !== 0) list.push(hook.transcript_path);
+    const byId = meta.sessionId ? resolveTranscript(meta.sessionId) : null;
+    if (byId) list.push(byId);
+    return list;
+  };
+
+  let text: string | null = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (const path of candidates()) {
+      text = readText(path);
+      if (text) break;
+    }
+    if (text) break;
+    await sleep(250);
+  }
+
   const send = deps.send ?? agentbusSend;
   await send(meta.nagiInstance, `ext:awe-${meta.runId}`, {
     type: 'result',

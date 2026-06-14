@@ -18,10 +18,11 @@ export function makeClaudeProfile(
     id: 'claude',
     bin,
     buildArgs: (input) => buildClaudeArgs(input),
-    writeApprovalSettings: ({ runDir, runId, nagiInstance, policy }) =>
+    writeApprovalSettings: ({ runDir, runId, sessionId, nagiInstance, policy }) =>
       writeApprovalSettings({
         runDir,
         runId,
+        sessionId,
         nagiInstance,
         policy,
         hookCommand: `"${execPath}" "${hookHelperPath}"`,

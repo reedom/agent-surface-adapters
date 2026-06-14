@@ -20,13 +20,13 @@ describe('hookTimeoutSeconds', () => {
 describe('writeApprovalSettings', () => {
   it('writes meta.json with the wait timeout and settings.json with the hook command', () => {
     const settingsPath = writeApprovalSettings({
-      runDir: dir, runId: 'run-7', nagiInstance: 'nagi',
+      runDir: dir, runId: 'run-7', sessionId: 'sess-7', nagiInstance: 'nagi',
       policy: { timeoutMs: 1000, onTimeout: 'wait' },
       hookCommand: '"/usr/bin/node" "/pkg/dist/hook/approve-via-agentbus.js"',
       stopHookCommand: '"/usr/bin/node" "/pkg/dist/hook/report-result-via-agentbus.js"',
     });
     const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
-    expect(meta).toEqual({ runId: 'run-7', nagiInstance: 'nagi', timeoutMs: 86_400_000 });
+    expect(meta).toEqual({ runId: 'run-7', sessionId: 'sess-7', nagiInstance: 'nagi', timeoutMs: 86_400_000 });
 
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     const hook = settings.hooks.PreToolUse[0].hooks[0];
@@ -45,7 +45,7 @@ describe('writeApprovalSettings', () => {
 
   it('writes the deny-policy timeout into both meta and the hook', () => {
     const settingsPath = writeApprovalSettings({
-      runDir: dir, runId: 'run-8', nagiInstance: 'nagi',
+      runDir: dir, runId: 'run-8', sessionId: 'sess-8', nagiInstance: 'nagi',
       policy: { timeoutMs: 5500, onTimeout: 'deny' },
       hookCommand: '"/usr/bin/node" "/pkg/dist/hook/approve-via-agentbus.js"',
       stopHookCommand: '"/usr/bin/node" "/pkg/dist/hook/report-result-via-agentbus.js"',

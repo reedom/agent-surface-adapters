@@ -40,7 +40,7 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
       const runDir = join(runsDir, runId);
       mkdirSync(runDir, { recursive: true });
 
-      const settingsFile = deps.agent.writeApprovalSettings({ runDir, runId, nagiInstance, policy });
+      const settingsFile = deps.agent.writeApprovalSettings({ runDir, runId, sessionId, nagiInstance, policy });
       const systemPrompt = composeSystemPrompt(spec.instructions, agentbusDirective(runId, nagiInstance));
       const args = deps.agent.buildArgs({
         sessionId,
