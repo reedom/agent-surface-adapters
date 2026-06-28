@@ -4,8 +4,11 @@
 // declares a `schema` gets it validated here (in the Stop hook) against the
 // agent's final message. Kept self-contained on purpose: pulling ajv would drag a
 // dependency tree into nagi's bundled, self-contained dist. The subset covers what
-// nagi workflows actually declare — object shapes with typed/enum properties and
-// `required` — and validates nested objects/arrays shallowly by type.
+// nagi workflows actually declare — object/array shapes with typed/enum properties
+// and `required` — and validates nested objects/arrays recursively, but only by
+// type/enum/required. NOT enforced: `additionalProperties` (so extra keys pass),
+// `anyOf`/`oneOf`, string formats, numeric bounds. Keep this a strict subset of the
+// consumer's zod schema or the two can disagree silently.
 
 export interface JsonSchema {
   type?: string;
@@ -21,14 +24,21 @@ export interface ValidationResult {
 }
 
 /**
- * Pull the JSON object an agent was asked to emit out of its final message text.
- * Tolerates ```json fences and surrounding prose; returns undefined if none parses.
+ * Pull the JSON value an agent was asked to emit out of its final message text.
+ * Handles both an object (`{...}`) and a top-level array (`[...]`) root, preferring
+ * whichever opener appears first. Tolerates ```json fences and surrounding prose;
+ * returns undefined if none parses.
  */
 export function extractJsonObject(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const body = fenced?.[1] ?? text;
-  const start = body.indexOf('{');
-  const end = body.lastIndexOf('}');
+  const objStart = body.indexOf('{');
+  const arrStart = body.indexOf('[');
+  const useArray = arrStart !== -1 && (objStart === -1 || arrStart < objStart);
+  const open = useArray ? '[' : '{';
+  const close = useArray ? ']' : '}';
+  const start = body.indexOf(open);
+  const end = body.lastIndexOf(close);
   if (start === -1 || end === -1 || end < start) return undefined;
   try {
     return JSON.parse(body.slice(start, end + 1));

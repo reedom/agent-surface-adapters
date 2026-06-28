@@ -18,9 +18,9 @@ export interface ResultHookDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Test seam: read the declared JSON Schema from its file. */
   readSchema?: (schemaPath: string) => JsonSchema | null;
-  /** Test seams for the per-run repair-attempt counter. */
-  readAttempts?: (runDir: string) => number;
-  writeAttempts?: (runDir: string, n: number) => void;
+  /** Test seams for the per-step repair-attempt counter (keyed by the attempts file path). */
+  readAttempts?: (path: string) => number;
+  writeAttempts?: (path: string, n: number) => void;
 }
 
 function defaultReadSchema(schemaPath: string): JsonSchema | null {
@@ -32,17 +32,20 @@ function defaultReadSchema(schemaPath: string): JsonSchema | null {
   }
 }
 
-function attemptsFile(runDir: string): string {
-  return join(runDir, 'repair-attempts');
+// The repair counter is keyed by sessionId, not runId: on the surfaced lane the runId
+// (and thus runDir) is shared by every step of a multi-step run, but each step gets a
+// fresh sessionId — so per-session keying gives each step its own repair budget.
+function attemptsPath(runDir: string, key: string): string {
+  return join(runDir, `repair-attempts-${key}`);
 }
-function defaultReadAttempts(runDir: string): number {
-  const p = attemptsFile(runDir);
-  if (!existsSync(p)) return 0;
-  const n = Number.parseInt(readFileSync(p, 'utf8').trim(), 10);
-  return Number.isFinite(n) ? n : 0;
+function defaultReadAttempts(path: string): number {
+  if (!existsSync(path)) return 0;
+  const n = Number.parseInt(readFileSync(path, 'utf8').trim(), 10);
+  // A corrupt counter must fail SAFE (treat as at-cap), never reset the loop bound.
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
 }
-function defaultWriteAttempts(runDir: string, n: number): void {
-  writeFileSync(attemptsFile(runDir), String(n));
+function defaultWriteAttempts(path: string, n: number): void {
+  writeFileSync(path, String(n));
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -146,8 +149,15 @@ export async function runResultHook(argv: string[], stdinJson: string, deps: Res
   const readSchema = deps.readSchema ?? defaultReadSchema;
   const schema = readSchema(meta.schemaPath);
   if (!schema) {
-    // Schema unreadable: fail open to text so the run still completes.
-    await send(meta.nagiInstance, from, { type: 'result', runId: meta.runId, text: finalText });
+    // A schema was declared but cannot be read (missing/corrupt) — that is an internal
+    // anomaly, not a free-text step, so report it as a failure (don't silently degrade
+    // to text and let it resurface downstream as an undefined-data error).
+    await send(meta.nagiInstance, from, {
+      type: 'result',
+      runId: meta.runId,
+      text: finalText,
+      error: `declared schema could not be read: ${meta.schemaPath}`,
+    });
     return JSON.stringify({});
   }
 
@@ -163,13 +173,14 @@ export async function runResultHook(argv: string[], stdinJson: string, deps: Res
   }
 
   const runDir = dirname(metaPath);
+  const apath = attemptsPath(runDir, meta.sessionId ?? meta.runId);
   const readAttempts = deps.readAttempts ?? defaultReadAttempts;
   const writeAttempts = deps.writeAttempts ?? defaultWriteAttempts;
-  const attempt = readAttempts(runDir);
+  const attempt = readAttempts(apath);
   const max = typeof meta.maxRepairs === 'number' ? meta.maxRepairs : DEFAULT_MAX_REPAIRS;
 
   if (attempt < max) {
-    writeAttempts(runDir, attempt + 1);
+    writeAttempts(apath, attempt + 1);
     // Block the stop and feed validation errors back so the agent re-emits valid JSON.
     return JSON.stringify({
       decision: 'block',

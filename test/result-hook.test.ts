@@ -137,4 +137,29 @@ describe('runResultHook — schema validation + repair', () => {
     expect(payload.data).toBeUndefined();
     expect(payload.error).toMatch(/schema validation failed/);
   });
+
+  it('keeps the repair counter per session (the file path embeds sessionId)', async () => {
+    const send = vi.fn(async () => {});
+    const written: string[] = [];
+    await runResultHook(['--meta', schemaMeta({ maxRepairs: 3 })], JSON.stringify({ transcript_path: transcriptWith('nope') }), {
+      send,
+      sleep: noSleep,
+      readAttempts: () => 0,
+      writeAttempts: (path) => { written.push(path); },
+    });
+    expect(written[0]).toMatch(/repair-attempts-sess-9$/); // keyed by sessionId, not a shared file
+  });
+
+  it('reports an error (not a silent text fallback) when a declared schema is unreadable', async () => {
+    const send = vi.fn(async () => {});
+    const p = join(dir, 'meta.json');
+    writeFileSync(p, JSON.stringify({ runId: 'run-9', sessionId: 'sess-9', nagiInstance: 'nagi', schemaPath: join(dir, 'missing-schema.json') }));
+    const out = JSON.parse(
+      await runResultHook(['--meta', p], JSON.stringify({ transcript_path: transcriptWith('{"ok":true}') }), { send, sleep: noSleep }),
+    );
+    expect(out.decision).toBeUndefined();
+    const payload = send.mock.calls[0][2];
+    expect(payload.data).toBeUndefined();
+    expect(payload.error).toMatch(/schema could not be read/);
+  });
 });
