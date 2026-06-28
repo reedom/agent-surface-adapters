@@ -38,11 +38,15 @@ function defaultReadSchema(schemaPath: string): JsonSchema | null {
 function attemptsPath(runDir: string, key: string): string {
   return join(runDir, `repair-attempts-${key}`);
 }
-function defaultReadAttempts(path: string): number {
+export function defaultReadAttempts(path: string): number {
   if (!existsSync(path)) return 0;
-  const n = Number.parseInt(readFileSync(path, 'utf8').trim(), 10);
+  const raw = readFileSync(path, 'utf8').trim();
   // A corrupt counter must fail SAFE (treat as at-cap), never reset the loop bound.
-  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+  // parseInt is too lenient ("1oops" -> 1, "-1" -> -1), so require a strictly
+  // non-negative integer string before trusting it.
+  if (!/^\d+$/.test(raw)) return Number.MAX_SAFE_INTEGER;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : Number.MAX_SAFE_INTEGER;
 }
 function defaultWriteAttempts(path: string, n: number): void {
   writeFileSync(path, String(n));

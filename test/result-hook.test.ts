@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lastAssistantText, runResultHook } from '../src/agents/claude/hook/report-result-via-agentbus.js';
+import { defaultReadAttempts, lastAssistantText, runResultHook } from '../src/agents/claude/hook/report-result-via-agentbus.js';
 
 let dir: string;
 beforeEach(() => {
@@ -32,6 +32,22 @@ describe('lastAssistantText', () => {
   });
   it('returns null for a missing transcript', () => {
     expect(lastAssistantText(join(dir, 'nope.jsonl'))).toBeNull();
+  });
+});
+
+describe('defaultReadAttempts', () => {
+  it('returns 0 for a missing counter file (fresh run)', () => {
+    expect(defaultReadAttempts(join(dir, 'absent'))).toBe(0);
+  });
+  it('reads a valid non-negative integer', () => {
+    writeFileSync(join(dir, 'c-valid'), '2');
+    expect(defaultReadAttempts(join(dir, 'c-valid'))).toBe(2);
+  });
+  it('fails safe (at-cap) on partially numeric or negative counters', () => {
+    for (const corrupt of ['1oops', '-1', '1.5', ' ', 'abc', '0x10']) {
+      writeFileSync(join(dir, 'c-bad'), corrupt);
+      expect(defaultReadAttempts(join(dir, 'c-bad'))).toBe(Number.MAX_SAFE_INTEGER);
+    }
   });
 });
 
