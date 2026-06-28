@@ -116,7 +116,10 @@ describe('runResultHook — schema validation + repair', () => {
       }),
     );
     expect(out.decision).toBe('block');
+    // The actionable feedback is in BOTH channels so the repair instruction reaches the
+    // model regardless of which field this Claude Code version delivers on a Stop block.
     expect(out.hookSpecificOutput.additionalContext).toMatch(/expected boolean/);
+    expect(out.reason).toMatch(/expected boolean/);
     expect(attempts).toBe(1); // counter advanced
     expect(send).not.toHaveBeenCalled(); // no result sent while repairing
   });

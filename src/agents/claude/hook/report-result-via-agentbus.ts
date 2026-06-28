@@ -177,21 +177,29 @@ export async function runResultHook(argv: string[], stdinJson: string, deps: Res
   const readAttempts = deps.readAttempts ?? defaultReadAttempts;
   const writeAttempts = deps.writeAttempts ?? defaultWriteAttempts;
   const attempt = readAttempts(apath);
-  const max = typeof meta.maxRepairs === 'number' ? meta.maxRepairs : DEFAULT_MAX_REPAIRS;
+  // Only a non-negative integer is a valid bound; anything else (negative, fractional)
+  // would otherwise be accepted by `typeof === 'number'` and silently skip the loop.
+  const declaredMax = meta.maxRepairs;
+  const max =
+    typeof declaredMax === 'number' && Number.isInteger(declaredMax) && 0 <= declaredMax
+      ? declaredMax
+      : DEFAULT_MAX_REPAIRS;
 
   if (attempt < max) {
     writeAttempts(apath, attempt + 1);
     // Block the stop and feed validation errors back so the agent re-emits valid JSON.
+    // The Claude-facing channel on a Stop block is hookSpecificOutput.additionalContext;
+    // we put the SAME actionable feedback in `reason` too (belt-and-suspenders across
+    // Claude Code versions, and `reason` is what a human sees), so the repair loop is
+    // always told what to fix, not just to retry.
+    const feedback =
+      'Your final message must be ONLY a JSON object matching the required schema, with no prose or code fences. ' +
+      `Validation errors:\n- ${validation.errors.join('\n- ')}\n` +
+      'Re-output the corrected JSON object as your final message now.';
     return JSON.stringify({
       decision: 'block',
-      reason: 'structured result did not match the required schema',
-      hookSpecificOutput: {
-        hookEventName: 'Stop',
-        additionalContext:
-          'Your final message must be ONLY a JSON object matching the required schema, with no prose or code fences. ' +
-          `Validation errors:\n- ${validation.errors.join('\n- ')}\n` +
-          'Re-output the corrected JSON object as your final message now.',
-      },
+      reason: feedback,
+      hookSpecificOutput: { hookEventName: 'Stop', additionalContext: feedback },
     });
   }
 

@@ -10,13 +10,17 @@
 // `anyOf`/`oneOf`, string formats, numeric bounds. Keep this a strict subset of the
 // consumer's zod schema or the two can disagree silently.
 
+export type JsonSchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
+
 export interface JsonSchema {
-  type?: string;
+  type?: JsonSchemaType;
   properties?: Record<string, JsonSchema>;
   required?: string[];
   enum?: unknown[];
   items?: JsonSchema;
 }
+
+const KNOWN_TYPES = new Set<string>(['string', 'number', 'integer', 'boolean', 'object', 'array']);
 
 export interface ValidationResult {
   ok: boolean;
@@ -71,6 +75,11 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
   const where = path === '' ? '(root)' : path;
   const errors: string[] = [];
 
+  // A declared type we don't support must fail loudly, not silently validate anything
+  // (a schema typo like "strnig" would otherwise disable all checks for this node).
+  if (schema.type !== undefined && !KNOWN_TYPES.has(schema.type)) {
+    return { ok: false, errors: [`${where}: unsupported schema type "${schema.type}"`] };
+  }
   if (!typeOk(value, schema.type)) {
     return { ok: false, errors: [`${where}: expected ${schema.type}`] };
   }
