@@ -13,7 +13,7 @@ export interface SurfaceAdapterDeps {
   host: SurfaceHost;
   agent: AgentProfile;
   /** Resolved by the single nagi consumer when this run's result message arrives. REQUIRED. */
-  awaitResult: (runId: string) => Promise<{ text: string; data?: unknown }>;
+  awaitResult: (runId: string) => Promise<{ text: string; data?: unknown; error?: string }>;
   /** Max Stop-hook repair rounds when a schema is declared (default handled downstream). */
   maxRepairs?: number;
   /** Engine cli key under which this adapter is registered. Defaults to the host id. */
@@ -81,6 +81,10 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
       const surface = await deps.host.launch({ cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}` });
       deps.onSurface?.(surface);
       const result = await deps.awaitResult(runId);
+      // A reported `error` (e.g. schema validation failed after all repairs) is the run's
+      // real failure cause — throw it so the workflow step fails with that message rather
+      // than a downstream undefined-data artifact.
+      if (result.error !== undefined) throw new Error(result.error);
       const usage = deps.agent.readUsage(sessionId, spec.cwd) ?? { inputTokens: 0, outputTokens: 0 };
 
       return {

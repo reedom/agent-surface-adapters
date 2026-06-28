@@ -6,7 +6,7 @@ import { makeClaudeProfile } from './agents/claude/profile.js';
 
 export interface CmuxClaudeOptions {
   /** Resolved by the single nagi consumer when this run's result message arrives. REQUIRED. */
-  awaitResult: (runId: string) => Promise<{ text: string; data?: unknown }>;
+  awaitResult: (runId: string) => Promise<{ text: string; data?: unknown; error?: string }>;
   /** Max Stop-hook repair rounds when a workflow declares a schema. */
   maxRepairs?: number;
   nagiInstance?: string;

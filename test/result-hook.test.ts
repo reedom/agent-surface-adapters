@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lastAssistantText, runResultHook } from '../src/agents/claude/hook/report-result-via-agentbus.js';
+import { defaultReadAttempts, lastAssistantText, runResultHook } from '../src/agents/claude/hook/report-result-via-agentbus.js';
 
 let dir: string;
 beforeEach(() => {
@@ -32,6 +32,22 @@ describe('lastAssistantText', () => {
   });
   it('returns null for a missing transcript', () => {
     expect(lastAssistantText(join(dir, 'nope.jsonl'))).toBeNull();
+  });
+});
+
+describe('defaultReadAttempts', () => {
+  it('returns 0 for a missing counter file (fresh run)', () => {
+    expect(defaultReadAttempts(join(dir, 'absent'))).toBe(0);
+  });
+  it('reads a valid non-negative integer', () => {
+    writeFileSync(join(dir, 'c-valid'), '2');
+    expect(defaultReadAttempts(join(dir, 'c-valid'))).toBe(2);
+  });
+  it('fails safe (at-cap) on partially numeric or negative counters', () => {
+    for (const corrupt of ['1oops', '-1', '1.5', ' ', 'abc', '0x10']) {
+      writeFileSync(join(dir, 'c-bad'), corrupt);
+      expect(defaultReadAttempts(join(dir, 'c-bad'))).toBe(Number.MAX_SAFE_INTEGER);
+    }
   });
 });
 
@@ -116,7 +132,10 @@ describe('runResultHook — schema validation + repair', () => {
       }),
     );
     expect(out.decision).toBe('block');
+    // The actionable feedback is in BOTH channels so the repair instruction reaches the
+    // model regardless of which field this Claude Code version delivers on a Stop block.
     expect(out.hookSpecificOutput.additionalContext).toMatch(/expected boolean/);
+    expect(out.reason).toMatch(/expected boolean/);
     expect(attempts).toBe(1); // counter advanced
     expect(send).not.toHaveBeenCalled(); // no result sent while repairing
   });
@@ -136,5 +155,45 @@ describe('runResultHook — schema validation + repair', () => {
     expect(payload.type).toBe('result');
     expect(payload.data).toBeUndefined();
     expect(payload.error).toMatch(/schema validation failed/);
+  });
+
+  it('keeps the repair counter per session (the file path embeds sessionId)', async () => {
+    const send = vi.fn(async () => {});
+    const written: string[] = [];
+    await runResultHook(['--meta', schemaMeta({ maxRepairs: 3 })], JSON.stringify({ transcript_path: transcriptWith('nope') }), {
+      send,
+      sleep: noSleep,
+      readAttempts: () => 0,
+      writeAttempts: (path) => { written.push(path); },
+    });
+    expect(written[0]).toMatch(/repair-attempts-sess-9$/); // keyed by sessionId, not a shared file
+  });
+
+  it('treats a negative maxRepairs as the default cap, not a disabled loop', async () => {
+    const send = vi.fn(async () => {});
+    let attempts = 0;
+    const out = JSON.parse(
+      await runResultHook(['--meta', schemaMeta({ maxRepairs: -1 })], JSON.stringify({ transcript_path: transcriptWith('{"ok":"nope"}') }), {
+        send,
+        sleep: noSleep,
+        readAttempts: () => attempts,
+        writeAttempts: (_p, n) => { attempts = n; },
+      }),
+    );
+    expect(out.decision).toBe('block'); // would be undefined (exhausted) if -1 were accepted as the bound
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('reports an error (not a silent text fallback) when a declared schema is unreadable', async () => {
+    const send = vi.fn(async () => {});
+    const p = join(dir, 'meta.json');
+    writeFileSync(p, JSON.stringify({ runId: 'run-9', sessionId: 'sess-9', nagiInstance: 'nagi', schemaPath: join(dir, 'missing-schema.json') }));
+    const out = JSON.parse(
+      await runResultHook(['--meta', p], JSON.stringify({ transcript_path: transcriptWith('{"ok":true}') }), { send, sleep: noSleep }),
+    );
+    expect(out.decision).toBeUndefined();
+    const payload = send.mock.calls[0][2];
+    expect(payload.data).toBeUndefined();
+    expect(payload.error).toMatch(/schema could not be read/);
   });
 });

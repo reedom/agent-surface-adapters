@@ -25,6 +25,44 @@ describe('extractJsonObject', () => {
     expect(extractJsonObject('no json here')).toBeUndefined();
     expect(extractJsonObject('{ not valid')).toBeUndefined();
   });
+  it('extracts a top-level JSON array root', () => {
+    expect(extractJsonObject('result: [{"x":1},{"y":2}]')).toEqual([{ x: 1 }, { y: 2 }]);
+  });
+  it('prefers the opener that appears first (object before array)', () => {
+    expect(extractJsonObject('{"a":[1,2]}')).toEqual({ a: [1, 2] });
+  });
+  it('falls back to the object root when an earlier bracket in prose does not parse', () => {
+    expect(extractJsonObject('note [debug] {"ok":true}')).toEqual({ ok: true });
+  });
+});
+
+describe('validateAgainstSchema — nested objects and arrays', () => {
+  const NESTED: JsonSchema = {
+    type: 'object',
+    properties: {
+      meta: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      tags: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['meta', 'tags'],
+  };
+  it('accepts a valid nested structure', () => {
+    expect(validateAgainstSchema({ meta: { id: 'x' }, tags: ['a', 'b'] }, NESTED).ok).toBe(true);
+  });
+  it('reports a dotted path for a nested object error', () => {
+    const r = validateAgainstSchema({ meta: { id: 7 }, tags: [] }, NESTED);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/meta\.id: expected string/);
+  });
+  it('reports an indexed path for a bad array element', () => {
+    const r = validateAgainstSchema({ meta: { id: 'x' }, tags: ['a', 3] }, NESTED);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/tags\[1\]: expected string/);
+  });
+  it('validates a top-level array root by items', () => {
+    const schema: JsonSchema = { type: 'array', items: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] } };
+    expect(validateAgainstSchema([{ ok: true }, { ok: false }], schema).ok).toBe(true);
+    expect(validateAgainstSchema([{ ok: true }, {}], schema).ok).toBe(false);
+  });
 });
 
 describe('validateAgainstSchema', () => {
@@ -49,5 +87,11 @@ describe('validateAgainstSchema', () => {
   });
   it('reports a non-object root', () => {
     expect(validateAgainstSchema('a string', TRIAGE).ok).toBe(false);
+  });
+  it('fails closed on an unsupported/typo schema type (does not silently pass)', () => {
+    const bad = { type: 'strnig' } as unknown as JsonSchema; // simulates a JSON-parsed authoring typo
+    const r = validateAgainstSchema('anything', bad);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/unsupported schema type "strnig"/);
   });
 });
