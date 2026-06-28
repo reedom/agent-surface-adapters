@@ -153,6 +153,21 @@ describe('runResultHook — schema validation + repair', () => {
     expect(written[0]).toMatch(/repair-attempts-sess-9$/); // keyed by sessionId, not a shared file
   });
 
+  it('treats a negative maxRepairs as the default cap, not a disabled loop', async () => {
+    const send = vi.fn(async () => {});
+    let attempts = 0;
+    const out = JSON.parse(
+      await runResultHook(['--meta', schemaMeta({ maxRepairs: -1 })], JSON.stringify({ transcript_path: transcriptWith('{"ok":"nope"}') }), {
+        send,
+        sleep: noSleep,
+        readAttempts: () => attempts,
+        writeAttempts: (_p, n) => { attempts = n; },
+      }),
+    );
+    expect(out.decision).toBe('block'); // would be undefined (exhausted) if -1 were accepted as the bound
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('reports an error (not a silent text fallback) when a declared schema is unreadable', async () => {
     const send = vi.fn(async () => {});
     const p = join(dir, 'meta.json');

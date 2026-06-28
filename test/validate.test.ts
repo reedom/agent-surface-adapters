@@ -85,4 +85,10 @@ describe('validateAgainstSchema', () => {
   it('reports a non-object root', () => {
     expect(validateAgainstSchema('a string', TRIAGE).ok).toBe(false);
   });
+  it('fails closed on an unsupported/typo schema type (does not silently pass)', () => {
+    const bad = { type: 'strnig' } as unknown as JsonSchema; // simulates a JSON-parsed authoring typo
+    const r = validateAgainstSchema('anything', bad);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/unsupported schema type "strnig"/);
+  });
 });
