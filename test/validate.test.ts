@@ -31,6 +31,9 @@ describe('extractJsonObject', () => {
   it('prefers the opener that appears first (object before array)', () => {
     expect(extractJsonObject('{"a":[1,2]}')).toEqual({ a: [1, 2] });
   });
+  it('falls back to the object root when an earlier bracket in prose does not parse', () => {
+    expect(extractJsonObject('note [debug] {"ok":true}')).toEqual({ ok: true });
+  });
 });
 
 describe('validateAgainstSchema — nested objects and arrays', () => {

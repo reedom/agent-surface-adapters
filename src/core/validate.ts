@@ -36,19 +36,24 @@ export interface ValidationResult {
 export function extractJsonObject(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const body = fenced?.[1] ?? text;
-  const objStart = body.indexOf('{');
-  const arrStart = body.indexOf('[');
-  const useArray = arrStart !== -1 && (objStart === -1 || arrStart < objStart);
-  const open = useArray ? '[' : '{';
-  const close = useArray ? ']' : '}';
-  const start = body.indexOf(open);
-  const end = body.lastIndexOf(close);
-  if (start === -1 || end === -1 || end < start) return undefined;
-  try {
-    return JSON.parse(body.slice(start, end + 1));
-  } catch {
-    return undefined;
+  // Candidate roots: an object (`{...}`) and/or a top-level array (`[...]`), tried in the
+  // order their opener appears. Returning the first that PARSES (rather than committing to
+  // the positionally-first opener) keeps a stray bracket in prose — e.g. "[debug] {...}" —
+  // from shadowing a valid later object.
+  const candidates = [
+    { start: body.indexOf('{'), end: body.lastIndexOf('}') },
+    { start: body.indexOf('['), end: body.lastIndexOf(']') },
+  ]
+    .filter((c) => c.start !== -1 && c.end !== -1 && c.start < c.end)
+    .sort((a, b) => a.start - b.start);
+  for (const { start, end } of candidates) {
+    try {
+      return JSON.parse(body.slice(start, end + 1));
+    } catch {
+      // not this root — fall through and try the next candidate
+    }
   }
+  return undefined;
 }
 
 function typeOk(value: unknown, type: string | undefined): boolean {
