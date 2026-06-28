@@ -18,13 +18,15 @@ export function makeClaudeProfile(
     id: 'claude',
     bin,
     buildArgs: (input) => buildClaudeArgs(input),
-    writeApprovalSettings: ({ runDir, runId, sessionId, nagiInstance, policy }) =>
+    writeApprovalSettings: ({ runDir, runId, sessionId, nagiInstance, policy, schemaPath, maxRepairs }) =>
       writeApprovalSettings({
         runDir,
         runId,
         sessionId,
         nagiInstance,
         policy,
+        ...(schemaPath !== undefined ? { schemaPath } : {}),
+        ...(maxRepairs !== undefined ? { maxRepairs } : {}),
         hookCommand: `"${execPath}" "${hookHelperPath}"`,
         stopHookCommand: `"${execPath}" "${reportHookHelperPath}"`,
       }),

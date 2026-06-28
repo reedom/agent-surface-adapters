@@ -6,7 +6,9 @@ import { makeClaudeProfile } from './agents/claude/profile.js';
 
 export interface CmuxClaudeOptions {
   /** Resolved by the single nagi consumer when this run's result message arrives. REQUIRED. */
-  awaitResult: (runId: string) => Promise<{ text: string }>;
+  awaitResult: (runId: string) => Promise<{ text: string; data?: unknown }>;
+  /** Max Stop-hook repair rounds when a workflow declares a schema. */
+  maxRepairs?: number;
   nagiInstance?: string;
   runsDir?: string;
   claudeBin?: string;
@@ -26,6 +28,7 @@ export function makeCmuxClaudeAdapter(opts: CmuxClaudeOptions): CliAdapter {
     host: makeCmuxHost({ bin: opts.cmuxBin, socketPath: opts.cmuxSocketPath, password: opts.cmuxPassword, window: opts.cmuxWindow }),
     agent: makeClaudeProfile({ bin: opts.claudeBin, hookHelperPath: opts.hookHelperPath }),
     awaitResult: opts.awaitResult,
+    ...(opts.maxRepairs !== undefined ? { maxRepairs: opts.maxRepairs } : {}),
     nagiInstance: opts.nagiInstance,
     runsDir: opts.runsDir,
     newRunId: opts.newRunId,

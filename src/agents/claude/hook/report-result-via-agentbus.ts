@@ -1,9 +1,14 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { send as agentbusSend } from '../../../core/agentbus.js';
+import { extractJsonObject, validateAgainstSchema, type JsonSchema } from '../../../core/validate.js';
 import { findTranscript } from '../result.js';
 
 type SendFn = (to: string, from: string, payload: unknown) => Promise<void>;
+
+/** Default cap on Stop-hook repair rounds before the run is reported as failed. */
+const DEFAULT_MAX_REPAIRS = 3;
 
 export interface ResultHookDeps {
   send?: SendFn;
@@ -11,6 +16,33 @@ export interface ResultHookDeps {
   findTranscript?: (sessionId: string) => string | null;
   /** Test seam for the flush-retry delay. */
   sleep?: (ms: number) => Promise<void>;
+  /** Test seam: read the declared JSON Schema from its file. */
+  readSchema?: (schemaPath: string) => JsonSchema | null;
+  /** Test seams for the per-run repair-attempt counter. */
+  readAttempts?: (runDir: string) => number;
+  writeAttempts?: (runDir: string, n: number) => void;
+}
+
+function defaultReadSchema(schemaPath: string): JsonSchema | null {
+  if (!existsSync(schemaPath)) return null;
+  try {
+    return JSON.parse(readFileSync(schemaPath, 'utf8')) as JsonSchema;
+  } catch {
+    return null;
+  }
+}
+
+function attemptsFile(runDir: string): string {
+  return join(runDir, 'repair-attempts');
+}
+function defaultReadAttempts(runDir: string): number {
+  const p = attemptsFile(runDir);
+  if (!existsSync(p)) return 0;
+  const n = Number.parseInt(readFileSync(p, 'utf8').trim(), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+function defaultWriteAttempts(runDir: string, n: number): void {
+  writeFileSync(attemptsFile(runDir), String(n));
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -70,6 +102,8 @@ export async function runResultHook(argv: string[], stdinJson: string, deps: Res
     runId: string;
     sessionId?: string;
     nagiInstance: string;
+    schemaPath?: string;
+    maxRepairs?: number;
   };
   const hook = JSON.parse(stdinJson) as { transcript_path?: string };
   const readText = deps.readLastAssistantText ?? lastAssistantText;
@@ -98,12 +132,67 @@ export async function runResultHook(argv: string[], stdinJson: string, deps: Res
   }
 
   const send = deps.send ?? agentbusSend;
-  await send(meta.nagiInstance, `ext:awe-${meta.runId}`, {
+  const from = `ext:awe-${meta.runId}`;
+  const finalText = text ?? '';
+
+  // No schema declared (seed surface / free-text steps): report the text, allow stop.
+  if (!meta.schemaPath) {
+    await send(meta.nagiInstance, from, { type: 'result', runId: meta.runId, text: finalText });
+    return JSON.stringify({}); // no decision field => allow the agent to stop
+  }
+
+  // Schema declared: validate the agent's final JSON and either report structured
+  // data, or block the stop and feed errors back so it repairs (bounded retries).
+  const readSchema = deps.readSchema ?? defaultReadSchema;
+  const schema = readSchema(meta.schemaPath);
+  if (!schema) {
+    // Schema unreadable: fail open to text so the run still completes.
+    await send(meta.nagiInstance, from, { type: 'result', runId: meta.runId, text: finalText });
+    return JSON.stringify({});
+  }
+
+  const data = extractJsonObject(finalText);
+  const validation =
+    data === undefined
+      ? { ok: false, errors: ['final message was not a JSON object'] }
+      : validateAgainstSchema(data, schema);
+
+  if (validation.ok) {
+    await send(meta.nagiInstance, from, { type: 'result', runId: meta.runId, text: finalText, data });
+    return JSON.stringify({});
+  }
+
+  const runDir = dirname(metaPath);
+  const readAttempts = deps.readAttempts ?? defaultReadAttempts;
+  const writeAttempts = deps.writeAttempts ?? defaultWriteAttempts;
+  const attempt = readAttempts(runDir);
+  const max = typeof meta.maxRepairs === 'number' ? meta.maxRepairs : DEFAULT_MAX_REPAIRS;
+
+  if (attempt < max) {
+    writeAttempts(runDir, attempt + 1);
+    // Block the stop and feed validation errors back so the agent re-emits valid JSON.
+    return JSON.stringify({
+      decision: 'block',
+      reason: 'structured result did not match the required schema',
+      hookSpecificOutput: {
+        hookEventName: 'Stop',
+        additionalContext:
+          'Your final message must be ONLY a JSON object matching the required schema, with no prose or code fences. ' +
+          `Validation errors:\n- ${validation.errors.join('\n- ')}\n` +
+          'Re-output the corrected JSON object as your final message now.',
+      },
+    });
+  }
+
+  // Repairs exhausted: report a failed result so nagi unblocks (otherwise its wait
+  // ceiling would hang); the workflow's own schema parse surfaces the failure.
+  await send(meta.nagiInstance, from, {
     type: 'result',
     runId: meta.runId,
-    text: text ?? '',
+    text: finalText,
+    error: `schema validation failed after ${max} repair attempt(s): ${validation.errors.join('; ')}`,
   });
-  return JSON.stringify({}); // no decision field => allow the agent to stop
+  return JSON.stringify({});
 }
 
 async function readAllStdin(): Promise<string> {

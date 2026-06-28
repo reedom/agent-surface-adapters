@@ -21,6 +21,10 @@ export interface ApprovalSettingsInput {
    * <path>` is appended. Same security contract as `hookCommand`.
    */
   stopHookCommand: string;
+  /** Path to the declared JSON Schema; when set, recorded in meta so the Stop hook validates against it. */
+  schemaPath?: string;
+  /** Max Stop-hook repair rounds before the run is reported failed. */
+  maxRepairs?: number;
 }
 
 export function hookTimeoutSeconds(policy: EscalationPolicy): number {
@@ -38,6 +42,8 @@ export function writeApprovalSettings(input: ApprovalSettingsInput): string {
       sessionId: input.sessionId,
       nagiInstance: input.nagiInstance,
       timeoutMs: input.policy.onTimeout === 'wait' ? 86_400_000 : input.policy.timeoutMs,
+      ...(input.schemaPath !== undefined ? { schemaPath: input.schemaPath } : {}),
+      ...(input.maxRepairs !== undefined ? { maxRepairs: input.maxRepairs } : {}),
     }),
   );
   const settings = {

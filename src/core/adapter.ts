@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AgentResult, AgentSpec, CliAdapter, EscalationPolicy } from 'ai-workflow-engine';
 import type { AgentProfile, SurfaceHost, SurfaceRef } from './types.js';
-import { agentbusDirective, composeSystemPrompt } from './prompt.js';
+import { agentbusDirective, composeSystemPrompt, schemaDirective } from './prompt.js';
 import { launcherScript, shellQuote } from './launcher.js';
 
 const DEFAULT_POLICY: EscalationPolicy = { timeoutMs: 86_400_000, onTimeout: 'wait' };
@@ -13,7 +13,9 @@ export interface SurfaceAdapterDeps {
   host: SurfaceHost;
   agent: AgentProfile;
   /** Resolved by the single nagi consumer when this run's result message arrives. REQUIRED. */
-  awaitResult: (runId: string) => Promise<{ text: string }>;
+  awaitResult: (runId: string) => Promise<{ text: string; data?: unknown }>;
+  /** Max Stop-hook repair rounds when a schema is declared (default handled downstream). */
+  maxRepairs?: number;
   /** Engine cli key under which this adapter is registered. Defaults to the host id. */
   id?: string;
   nagiInstance?: string;
@@ -31,8 +33,10 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
   const id = deps.id ?? deps.host.id;
 
   return {
+    // schema: structured output is supported via prompt delivery + Stop-hook validation
+    // (not a native CLI flag), so the consumer can rely on result.data when it declares one.
     id,
-    caps: { schema: false, resume: false, tools: true },
+    caps: { schema: true, resume: false, tools: true },
     async run(spec: AgentSpec): Promise<AgentResult> {
       const runId = spec.escalation?.runId ?? deps.newRunId?.() ?? randomUUID();
       const sessionId = deps.newSessionId?.() ?? randomUUID();
@@ -40,8 +44,29 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
       const runDir = join(runsDir, runId);
       mkdirSync(runDir, { recursive: true });
 
-      const settingsFile = deps.agent.writeApprovalSettings({ runDir, runId, sessionId, nagiInstance, policy });
-      const systemPrompt = composeSystemPrompt(spec.instructions, agentbusDirective(runId, nagiInstance));
+      // When the workflow declares a schema, deliver it both to the agent (in the
+      // system prompt) and to the Stop hook (a per-run file, recorded in meta) so
+      // the hook can validate the final message and drive repair.
+      let schemaPath: string | undefined;
+      if (spec.schema !== undefined) {
+        schemaPath = join(runDir, 'schema.json');
+        writeFileSync(schemaPath, JSON.stringify(spec.schema));
+      }
+
+      const settingsFile = deps.agent.writeApprovalSettings({
+        runDir,
+        runId,
+        sessionId,
+        nagiInstance,
+        policy,
+        ...(schemaPath !== undefined ? { schemaPath } : {}),
+        ...(deps.maxRepairs !== undefined ? { maxRepairs: deps.maxRepairs } : {}),
+      });
+      const directive =
+        spec.schema !== undefined
+          ? `${agentbusDirective(runId, nagiInstance)}\n\n${schemaDirective(spec.schema)}`
+          : agentbusDirective(runId, nagiInstance);
+      const systemPrompt = composeSystemPrompt(spec.instructions, directive);
       const args = deps.agent.buildArgs({
         sessionId,
         settingsFile,
@@ -58,7 +83,13 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
       const result = await deps.awaitResult(runId);
       const usage = deps.agent.readUsage(sessionId, spec.cwd) ?? { inputTokens: 0, outputTokens: 0 };
 
-      return { text: result.text, raw: { surface, runId, sessionId }, usage, sessionId };
+      return {
+        text: result.text,
+        ...(result.data !== undefined ? { data: result.data } : {}),
+        raw: { surface, runId, sessionId },
+        usage,
+        sessionId,
+      };
     },
   };
 }

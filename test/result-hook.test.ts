@@ -76,3 +76,65 @@ describe('runResultHook', () => {
     expect(send).toHaveBeenCalledWith('nagi', 'ext:awe-run-9', { type: 'result', runId: 'run-9', text: '' });
   });
 });
+
+describe('runResultHook — schema validation + repair', () => {
+  const noSleep = async (): Promise<void> => {};
+  const schema = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] };
+  function schemaMeta(extra: Record<string, unknown> = {}): string {
+    const p = join(dir, 'meta.json');
+    writeFileSync(
+      p,
+      JSON.stringify({ runId: 'run-9', sessionId: 'sess-9', nagiInstance: 'nagi', timeoutMs: 1, schemaPath: join(dir, 'schema.json'), ...extra }),
+    );
+    writeFileSync(join(dir, 'schema.json'), JSON.stringify(schema));
+    return p;
+  }
+  function transcriptWith(text: string): string {
+    return writeTranscript('t.jsonl', [
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] } },
+    ]);
+  }
+
+  it('sends structured data and allows stop when the final JSON validates', async () => {
+    const send = vi.fn(async () => {});
+    const out = JSON.parse(
+      await runResultHook(['--meta', schemaMeta()], JSON.stringify({ transcript_path: transcriptWith('{"ok":true}') }), { send, sleep: noSleep }),
+    );
+    expect(send).toHaveBeenCalledWith('nagi', 'ext:awe-run-9', { type: 'result', runId: 'run-9', text: '{"ok":true}', data: { ok: true } });
+    expect(out.decision).toBeUndefined();
+  });
+
+  it('blocks the stop with repair feedback when the final JSON is invalid (under the cap)', async () => {
+    const send = vi.fn(async () => {});
+    let attempts = 0;
+    const out = JSON.parse(
+      await runResultHook(['--meta', schemaMeta({ maxRepairs: 2 })], JSON.stringify({ transcript_path: transcriptWith('{"ok":"nope"}') }), {
+        send,
+        sleep: noSleep,
+        readAttempts: () => attempts,
+        writeAttempts: (_d, n) => { attempts = n; },
+      }),
+    );
+    expect(out.decision).toBe('block');
+    expect(out.hookSpecificOutput.additionalContext).toMatch(/expected boolean/);
+    expect(attempts).toBe(1); // counter advanced
+    expect(send).not.toHaveBeenCalled(); // no result sent while repairing
+  });
+
+  it('reports a failed result once repairs are exhausted (so the run unblocks)', async () => {
+    const send = vi.fn(async () => {});
+    const out = JSON.parse(
+      await runResultHook(['--meta', schemaMeta({ maxRepairs: 2 })], JSON.stringify({ transcript_path: transcriptWith('not json at all') }), {
+        send,
+        sleep: noSleep,
+        readAttempts: () => 2, // already at the cap
+        writeAttempts: () => {},
+      }),
+    );
+    expect(out.decision).toBeUndefined(); // allow stop
+    const payload = send.mock.calls[0][2];
+    expect(payload.type).toBe('result');
+    expect(payload.data).toBeUndefined();
+    expect(payload.error).toMatch(/schema validation failed/);
+  });
+});
