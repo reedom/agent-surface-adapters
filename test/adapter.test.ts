@@ -23,10 +23,10 @@ function fakeHost(launch: SurfaceHost['launch']): SurfaceHost { return { id: 'cm
 function spec(over: Partial<AgentSpec> = {}): AgentSpec { return { prompt: 'do the thing', cwd: '/repo', ...over }; }
 
 describe('makeSurfaceAdapter', () => {
-  it('uses host id by default and non-schema caps', () => {
+  it('uses host id by default and schema-capable caps', () => {
     const a = makeSurfaceAdapter({ host: fakeHost(async () => ({ raw: '' })), agent: fakeAgent(), awaitResult: async () => ({ text: '' }) });
     expect(a.id).toBe('cmux');
-    expect(a.caps).toEqual({ schema: false, resume: false, tools: true });
+    expect(a.caps).toEqual({ schema: true, resume: false, tools: true });
   });
   it('honors an explicit id override', () => {
     const a = makeSurfaceAdapter({ id: 'cmux-codex', host: fakeHost(async () => ({ raw: '' })), agent: fakeAgent(), awaitResult: async () => ({ text: '' }) });

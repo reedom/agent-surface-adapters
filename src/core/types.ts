@@ -41,6 +41,10 @@ export interface AgentProfile {
     sessionId: string;
     nagiInstance: string;
     policy: EscalationPolicy;
+    /** Path to the declared JSON Schema file; when set, the Stop hook validates against it. */
+    schemaPath?: string;
+    /** Max Stop-hook repair rounds before the run is reported failed. */
+    maxRepairs?: number;
   }): string;
   /** Token usage from the agent's session transcript, or null. */
   readUsage(sessionId: string, cwd?: string): AgentUsage | null;
