@@ -32,4 +32,17 @@ describe('buildClaudeArgs', () => {
     expect(without).not.toContain('--model');
     expect(without).not.toContain('--add-dir');
   });
+
+  it('emits the permission flag and keeps the prompt last', () => {
+    const auto = buildClaudeArgs({ sessionId: 's', settingsFile: 'f', systemPrompt: 'y', prompt: 'p', permissionMode: 'auto' });
+    expect(auto).toContain('--permission-mode');
+    expect(auto[auto.indexOf('--permission-mode') + 1]).toBe('auto');
+    expect(auto[auto.length - 2]).toBe('--');
+    expect(auto[auto.length - 1]).toBe('p');
+    const bypass = buildClaudeArgs({ sessionId: 's', settingsFile: 'f', systemPrompt: 'y', prompt: 'p', permissionMode: 'bypassPermissions' });
+    expect(bypass).toContain('--dangerously-skip-permissions');
+    const none = buildClaudeArgs({ sessionId: 's', settingsFile: 'f', systemPrompt: 'y', prompt: 'p' });
+    expect(none).not.toContain('--permission-mode');
+    expect(none).not.toContain('--dangerously-skip-permissions');
+  });
 });

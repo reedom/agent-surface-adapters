@@ -1,3 +1,4 @@
+import { permissionModeArgs } from 'ai-workflow-engine';
 import type { AgentBuildInput } from '../../core/types.js';
 
 export function buildClaudeArgs(input: AgentBuildInput): string[] {
@@ -8,6 +9,7 @@ export function buildClaudeArgs(input: AgentBuildInput): string[] {
   ];
   if (input.model) args.push('--model', input.model);
   if (input.addDir) args.push('--add-dir', input.addDir);
+  args.push(...permissionModeArgs(input.permissionMode));
   args.push('--', input.prompt);
   return args;
 }
