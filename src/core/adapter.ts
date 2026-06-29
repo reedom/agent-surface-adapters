@@ -74,6 +74,7 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
         prompt: spec.prompt,
         model: spec.model,
         addDir: spec.cwd,
+        ...(spec.permissionMode !== undefined ? { permissionMode: spec.permissionMode } : {}),
       });
       const scriptPath = join(runDir, 'launch.sh');
       writeFileSync(scriptPath, launcherScript(deps.agent.bin, args));

@@ -1,4 +1,4 @@
-import type { AgentUsage, EscalationPolicy } from 'ai-workflow-engine';
+import type { AgentUsage, EscalationPolicy, PermissionMode } from 'ai-workflow-engine';
 
 export interface SurfaceRef {
   raw: string;
@@ -26,6 +26,7 @@ export interface AgentBuildInput {
   prompt: string;
   model?: string;
   addDir?: string;
+  permissionMode?: PermissionMode;
 }
 
 export interface AgentProfile {
