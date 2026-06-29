@@ -79,12 +79,14 @@ export function isSelfReport(toolName: string, toolInput: unknown, nagiInstance:
   return tokens[0] === nagiInstance; // send <to>
 }
 
-function decisionJson(behavior: 'allow' | 'deny', reason: string): string {
+// PermissionRequest decision shape (NOT PreToolUse's permissionDecision). The
+// `reason` is carried for callers/logging but PermissionRequest output has no
+// reason field, so only `behavior` reaches Claude.
+function decisionJson(behavior: 'allow' | 'deny', _reason: string): string {
   return JSON.stringify({
     hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: behavior,
-      permissionDecisionReason: reason,
+      hookEventName: 'PermissionRequest',
+      decision: { behavior },
     },
   });
 }
