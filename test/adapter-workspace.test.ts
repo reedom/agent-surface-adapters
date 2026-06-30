@@ -49,4 +49,22 @@ describe('surface adapter workspace model', () => {
     await adapter.setMeta({ description: 'a title' });
     expect(host.calls).toEqual(['create:', 'meta:/a title']);
   });
+
+  it('setMeta no-ops on a non-workspace host (launch fallback) rather than buffering forever', async () => {
+    const calls: string[] = [];
+    const launchOnly: SurfaceHost = { id: 'plain', launch: async () => { calls.push('launch'); return { raw: 'L', ref: 'L' }; } };
+    const adapter = makeSurfaceAdapter({ host: launchOnly, agent: fakeProfile(), awaitResult: async () => ({ text: 'ok' }), runsDir }) as any;
+    await adapter.setMeta({ name: 'ABC-1' });
+    await adapter.run({ prompt: 'a', escalation: { runId: 'r' } });
+    await adapter.setMeta({ description: 'after' });
+    expect(calls).toEqual(['launch']); // no meta plumbing attempted
+  });
+
+  it('setMeta throws if a workspace host omits live setMeta after creation', async () => {
+    const host = fakeHost();
+    delete (host as Partial<SurfaceHost>).setMeta; // has createWorkspace+addSurface but no setMeta
+    const adapter = makeSurfaceAdapter({ host, agent: fakeProfile(), awaitResult: async () => ({ text: 'ok' }), runsDir }) as any;
+    await adapter.run({ prompt: 'a', escalation: { runId: 'r' } });
+    await expect(adapter.setMeta({ description: 'x' })).rejects.toThrow(/does not support live setMeta/);
+  });
 });

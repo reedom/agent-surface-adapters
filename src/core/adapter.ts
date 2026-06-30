@@ -116,13 +116,18 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter & { set
       };
     },
     async setMeta(meta: SurfaceMeta): Promise<void> {
+      // A non-workspace host (launch fallback) has no workspace to label and never sets
+      // workspaceRef, so buffering would accumulate forever. No-op cleanly instead — the
+      // engine treats setSurfaceMeta as best-effort ("no-op on lanes without a surface").
+      if (!useWorkspaceModel) return;
       // Before the workspace exists, buffer ("sticky") so meta is applied at creation.
       if (workspaceRef === undefined) {
         pendingMeta = { ...pendingMeta, ...meta };
         return;
       }
-      // After creation, pendingMeta is no longer consumed, so a missing setMeta would
-      // silently drop the update — throw loudly instead.
+      // The workspace exists and the pre-creation buffer is exhausted, so this meta can
+      // only be applied via host.setMeta. A host with the workspace verbs but no setMeta is
+      // misconfigured; throw rather than let the caller believe the relabel succeeded.
       if (!deps.host.setMeta) {
         throw new Error(`host '${deps.host.id}' does not support live setMeta on an existing workspace`);
       }
