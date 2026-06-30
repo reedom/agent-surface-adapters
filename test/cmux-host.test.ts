@@ -78,17 +78,25 @@ describe('makeCmuxHost', () => {
 });
 
 describe('cmux host workspace verbs', () => {
-  it('createWorkspace passes --name/--description and resolves the initial surface', async () => {
-    const { runner, calls } = recordingRunner({
-      'new-workspace': JSON.stringify({ workspace_id: 'ws-1' }),
-      'list-pane-surfaces': JSON.stringify({ surfaces: [{ id: 'sf-1' }] }),
-    });
+  // cmux `new-workspace` (now an alias for `workspace create`) ignores `--json` and prints
+  // plain text like `OK workspace:40`, so we parse the ordinal ref, not JSON.
+  it('createWorkspace parses the plain-text ref and passes --name/--description', async () => {
+    const { runner, calls } = recordingRunner({ 'new-workspace': 'OK workspace:40' });
     const host = makeCmuxHost({ runner });
     const r = await host.createWorkspace!({ cwd: '/repo', command: 'bash x.sh', meta: { name: 'ABC-1', description: 'do it' } });
-    expect(r.workspace.ref).toBe('ws-1');
-    expect(r.surface.ref).toBe('sf-1');
+    expect(r.workspace.ref).toBe('workspace:40');
+    // The first agent's surface handle is the workspace ref; we do not make a second list call.
+    expect(r.surface.ref).toBe('workspace:40');
+    expect(calls.some((c) => c.includes('list-pane-surfaces'))).toBe(false);
     const create = calls.find((c) => c.includes('new-workspace'))!;
-    expect(create).toEqual(expect.arrayContaining(['--name', 'ABC-1', '--description', 'do it', '--cwd', '/repo', '--command', 'bash x.sh', '--json']));
+    expect(create).toEqual(expect.arrayContaining(['--name', 'ABC-1', '--description', 'do it', '--cwd', '/repo', '--command', 'bash x.sh']));
+  });
+
+  it('createWorkspace also accepts JSON workspace_id output (forward-compat)', async () => {
+    const { runner } = recordingRunner({ 'new-workspace': JSON.stringify({ workspace_id: 'ws-uuid-1' }) });
+    const host = makeCmuxHost({ runner });
+    const r = await host.createWorkspace!({ command: 'bash x.sh' });
+    expect(r.workspace.ref).toBe('ws-uuid-1');
   });
 
   it('addSurface targets the parent workspace', async () => {
