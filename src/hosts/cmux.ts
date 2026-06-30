@@ -89,7 +89,8 @@ export function makeCmuxHost(opts: CmuxHostOptions = {}): SurfaceHost {
       return { raw: r.stdout.trim(), ref: parseRef(r.stdout, 'surface') };
     },
     async setMeta(workspaceRef, meta) {
-      if (meta.name) await runOrThrow('rename-workspace', ['rename-workspace', '--workspace', workspaceRef, meta.name]);
+      // `--` ends option parsing so a name starting with `-` is taken as the positional title.
+      if (meta.name) await runOrThrow('rename-workspace', ['rename-workspace', '--workspace', workspaceRef, '--', meta.name]);
       if (meta.description) await runOrThrow('workspace-action', ['workspace-action', '--action', 'set-description', '--workspace', workspaceRef, '--description', meta.description]);
     },
     // Drive a resident REPL: type text, then submit/control with a key.

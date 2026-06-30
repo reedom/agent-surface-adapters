@@ -125,7 +125,7 @@ describe('cmux host workspace verbs', () => {
     const { runner, calls } = recordingRunner();
     const host = makeCmuxHost({ runner });
     await host.setMeta!('ws-1', { name: 'ABC-1', description: 'a title' });
-    expect(calls[0]).toEqual(expect.arrayContaining(['rename-workspace', '--workspace', 'ws-1', 'ABC-1']));
+    expect(calls[0]).toEqual(expect.arrayContaining(['rename-workspace', '--workspace', 'ws-1', '--', 'ABC-1']));
     expect(calls[1]).toEqual(expect.arrayContaining(['workspace-action', '--action', 'set-description', '--workspace', 'ws-1', '--description', 'a title']));
   });
 });
