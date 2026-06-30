@@ -80,13 +80,15 @@ export function isSelfReport(toolName: string, toolInput: unknown, nagiInstance:
 }
 
 // PermissionRequest decision shape (NOT PreToolUse's permissionDecision). The
-// `reason` is carried for callers/logging but PermissionRequest output has no
-// reason field, so only `behavior` reaches Claude.
-function decisionJson(behavior: 'allow' | 'deny', _reason: string): string {
+// `message` field is deny-only per the hook contract: it tells Claude why the
+// permission was denied (helping it avoid retrying the blocked action) and is
+// ignored on the allow path, so we only attach it for `deny`.
+function decisionJson(behavior: 'allow' | 'deny', reason: string): string {
+  const decision = behavior === 'deny' ? { behavior, message: reason } : { behavior };
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PermissionRequest',
-      decision: { behavior },
+      decision,
     },
   });
 }

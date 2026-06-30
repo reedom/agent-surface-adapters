@@ -21,6 +21,7 @@ describe('runApprovalHook', () => {
     const out = JSON.parse(await runApprovalHook(['--meta', metaPath], hookStdin, { ask }));
     expect(out.hookSpecificOutput.hookEventName).toBe('PermissionRequest');
     expect(out.hookSpecificOutput.decision.behavior).toBe('allow');
+    expect(out.hookSpecificOutput.decision).not.toHaveProperty('message'); // message is deny-only
     const [to, from, timeoutMs, payload] = ask.mock.calls[0];
     expect(to).toBe('nagi');
     expect(from).toBe('ext:awe-run-3');
@@ -28,10 +29,11 @@ describe('runApprovalHook', () => {
     expect(payload).toEqual({ type: 'approval', runId: 'run-3', tool: 'Bash', input: { command: 'ls' }, cwd: '/repo' });
   });
 
-  it('maps deny to a PermissionRequest deny decision', async () => {
+  it('maps deny to a PermissionRequest deny decision and preserves the reason as decision.message', async () => {
     const ask = vi.fn().mockResolvedValue({ behavior: 'deny', reason: 'nope' });
     const out = JSON.parse(await runApprovalHook(['--meta', metaPath], hookStdin, { ask }));
     expect(out.hookSpecificOutput.decision.behavior).toBe('deny');
+    expect(out.hookSpecificOutput.decision.message).toBe('nope');
   });
 
   it('throws when --meta is missing', async () => {
