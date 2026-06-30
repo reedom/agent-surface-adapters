@@ -1,4 +1,5 @@
 import { runProcess, type RunFn } from '../core/run.js';
+import { shellQuote } from '../core/launcher.js';
 import type { SurfaceHost, SurfaceRef, SurfaceMeta } from '../core/types.js';
 
 export interface CmuxHostOptions {
@@ -82,16 +83,24 @@ export function makeCmuxHost(opts: CmuxHostOptions = {}): SurfaceHost {
       return { workspace: { raw: r.stdout.trim(), ref: wsRef }, surface: { raw: r.stdout.trim(), ref: wsRef } };
     },
     async addSurface({ workspaceRef, cwd, command }) {
+      // cmux `new-surface` (unlike `new-workspace`) has NO `--command` flag — it only opens a
+      // bare terminal tab, so the launch command was silently dropped and every agent after
+      // the first hung as an idle shell. Fix: open the tab in the run's workspace, then type
+      // the launch command INTO that surface, addressing it by surface ref (the same
+      // send/send-key path residents use). `respawn-pane` can't do this — it targets panes,
+      // not the individual surface we just added.
       const args = globalArgs();
-      args.push('new-surface', '--workspace', workspaceRef);
-      if (cwd) args.push('--cwd', cwd);
-      args.push('--command', command, '--focus', 'true', '--json');
+      args.push('new-surface', '--workspace', workspaceRef, '--type', 'terminal', '--focus', 'true', '--json');
       const r = await run(bin, args);
       if (r.code !== 0) throw new Error(`cmux new-surface failed: ${r.stderr.trim().slice(0, 300)}`);
       const ref = parseRef(r.stdout, 'surface');
-      // Fail fast like createWorkspace: an unparsable ref would otherwise reach send/sendKey
-      // as `undefined` and surface only as an opaque cmux error.
+      // Fail fast: an unparsable ref would otherwise reach send/sendKey as `undefined`.
       if (!ref) throw new Error(`cmux new-surface: could not parse a surface ref from: ${r.stdout.trim().slice(0, 200)}`);
+      // new-surface has no --cwd either; cd into the worktree first when requested, then exec
+      // so the surface BECOMES the agent process (matching new-workspace --command for agent 1).
+      const launch = cwd ? `cd ${shellQuote(cwd)} && exec ${command}` : `exec ${command}`;
+      await runOrThrow('send', ['send', '--surface', ref, launch]);
+      await runOrThrow('send-key', ['send-key', '--surface', ref, 'Return']);
       return { raw: r.stdout.trim(), ref };
     },
     async setMeta(workspaceRef, meta) {
