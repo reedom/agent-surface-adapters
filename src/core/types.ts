@@ -13,7 +13,7 @@ export interface SurfaceMeta {
 export interface SurfaceHost {
   readonly id: string;
   launch(input: { cwd?: string; command: string }): Promise<SurfaceRef>;
-  createWorkspace?(input: { cwd?: string; command: string; meta?: SurfaceMeta }): Promise<{ workspace: SurfaceRef; surface: SurfaceRef }>;
+  createWorkspace?(input: { cwd?: string; command: string; meta?: SurfaceMeta }): Promise<{ workspace: SurfaceRef & { ref: string }; surface: SurfaceRef }>;
   addSurface?(input: { workspaceRef: string; cwd?: string; command: string }): Promise<SurfaceRef>;
   setMeta?(workspaceRef: string, meta: SurfaceMeta): Promise<void>;
   /**

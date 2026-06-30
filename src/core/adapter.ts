@@ -34,7 +34,10 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter & { set
 
   let workspaceRef: string | undefined;
   let pendingMeta: SurfaceMeta = {};
-  const useWorkspaceModel = typeof deps.host.createWorkspace === 'function';
+  // Workspace mode adds surfaces to a created workspace on the 2nd+ run, so it
+  // requires both verbs; a host with only createWorkspace falls back to launch().
+  const useWorkspaceModel =
+    typeof deps.host.createWorkspace === 'function' && typeof deps.host.addSurface === 'function';
 
   return {
     // schema: structured output is supported via prompt delivery + Stop-hook validation
@@ -87,7 +90,7 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter & { set
       if (useWorkspaceModel) {
         if (workspaceRef === undefined) {
           const ws = await deps.host.createWorkspace!({ cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}`, meta: pendingMeta });
-          workspaceRef = ws.workspace.ref ?? ws.workspace.raw;
+          workspaceRef = ws.workspace.ref;
           pendingMeta = {};
           surface = ws.surface;
         } else {
@@ -113,11 +116,17 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter & { set
       };
     },
     async setMeta(meta: SurfaceMeta): Promise<void> {
-      if (workspaceRef !== undefined && deps.host.setMeta) {
-        await deps.host.setMeta(workspaceRef, meta);
-      } else {
+      // Before the workspace exists, buffer ("sticky") so meta is applied at creation.
+      if (workspaceRef === undefined) {
         pendingMeta = { ...pendingMeta, ...meta };
+        return;
       }
+      // After creation, pendingMeta is no longer consumed, so a missing setMeta would
+      // silently drop the update — throw loudly instead.
+      if (!deps.host.setMeta) {
+        throw new Error(`host '${deps.host.id}' does not support live setMeta on an existing workspace`);
+      }
+      await deps.host.setMeta(workspaceRef, meta);
     },
   };
 }
