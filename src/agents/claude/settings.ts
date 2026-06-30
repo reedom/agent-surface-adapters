@@ -10,7 +10,7 @@ export interface ApprovalSettingsInput {
   nagiInstance: string;
   policy: EscalationPolicy;
   /**
-   * Full command prefix for the PreToolUse hook; `--meta <path>` is appended.
+   * Full command prefix for the PermissionRequest hook; `--meta <path>` is appended.
    * SECURITY: embedded verbatim into a shell-executed hook command, so it MUST
    * be a trusted, already-quoted command string with no untrusted/user input
    * (the adapter builds it from process.execPath + the hook helper path).
@@ -48,7 +48,12 @@ export function writeApprovalSettings(input: ApprovalSettingsInput): string {
   );
   const settings = {
     hooks: {
-      PreToolUse: [
+      // PermissionRequest (not PreToolUse): PreToolUse fires for EVERY tool call
+      // regardless of permission mode, which would gate unconditionally. PermissionRequest
+      // fires only when Claude's permission system would prompt a human — so this Slack
+      // gate is a conditional substitute for Claude's own prompt: silent under
+      // bypassPermissions / for auto-allowed tools, active only when Claude would ask.
+      PermissionRequest: [
         {
           matcher: '*',
           hooks: [

@@ -79,12 +79,16 @@ export function isSelfReport(toolName: string, toolInput: unknown, nagiInstance:
   return tokens[0] === nagiInstance; // send <to>
 }
 
+// PermissionRequest decision shape (NOT PreToolUse's permissionDecision). The
+// `message` field is deny-only per the hook contract: it tells Claude why the
+// permission was denied (helping it avoid retrying the blocked action) and is
+// ignored on the allow path, so we only attach it for `deny`.
 function decisionJson(behavior: 'allow' | 'deny', reason: string): string {
+  const decision = behavior === 'deny' ? { behavior, message: reason } : { behavior };
   return JSON.stringify({
     hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: behavior,
-      permissionDecisionReason: reason,
+      hookEventName: 'PermissionRequest',
+      decision,
     },
   });
 }

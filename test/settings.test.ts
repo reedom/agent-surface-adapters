@@ -29,8 +29,13 @@ describe('writeApprovalSettings', () => {
     expect(meta).toEqual({ runId: 'run-7', sessionId: 'sess-7', nagiInstance: 'nagi', timeoutMs: 86_400_000 });
 
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    const hook = settings.hooks.PreToolUse[0].hooks[0];
-    expect(settings.hooks.PreToolUse[0].matcher).toBe('*');
+    // The gate is registered on PermissionRequest, not PreToolUse: PreToolUse fires
+    // for every tool unconditionally, whereas PermissionRequest fires only when
+    // Claude's permission system would prompt a human — so the Slack gate is a
+    // conditional substitute for Claude's own prompt (silent under bypassPermissions).
+    expect(settings.hooks.PreToolUse).toBeUndefined();
+    const hook = settings.hooks.PermissionRequest[0].hooks[0];
+    expect(settings.hooks.PermissionRequest[0].matcher).toBe('*');
     expect(hook.type).toBe('command');
     expect(hook.timeout).toBe(86_400);
     expect(hook.command).toContain('approve-via-agentbus.js');
@@ -53,6 +58,6 @@ describe('writeApprovalSettings', () => {
     const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
     expect(meta.timeoutMs).toBe(5500);
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    expect(settings.hooks.PreToolUse[0].hooks[0].timeout).toBe(66);
+    expect(settings.hooks.PermissionRequest[0].hooks[0].timeout).toBe(66);
   });
 });
