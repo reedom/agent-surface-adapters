@@ -113,12 +113,19 @@ describe('cmux host workspace verbs', () => {
     expect(r.workspace.ref).toBe('ws-uuid-1');
   });
 
-  it('addSurface targets the parent workspace', async () => {
-    const { runner, calls } = recordingRunner({ 'new-surface': JSON.stringify({ surface: 'sf-2' }) });
+  it('addSurface opens a terminal tab in the run workspace then types the launch command into it', async () => {
+    const { runner, calls } = recordingRunner({
+      'new-surface': JSON.stringify({ pane_ref: 'pane:2', surface_ref: 'surface:7' }),
+    });
     const host = makeCmuxHost({ runner });
     const r = await host.addSurface!({ workspaceRef: 'ws-1', cwd: '/repo', command: 'bash y.sh' });
-    expect(r.ref).toBe('sf-2');
-    expect(calls[0]).toEqual(expect.arrayContaining(['new-surface', '--workspace', 'ws-1', '--cwd', '/repo', '--command', 'bash y.sh']));
+    expect(r.ref).toBe('surface:7');
+    // new-surface only opens a bare tab (no --command)...
+    expect(calls[0]).toEqual(expect.arrayContaining(['new-surface', '--workspace', 'ws-1', '--type', 'terminal', '--focus', 'true', '--json']));
+    expect(calls[0]).not.toContain('--command');
+    // ...then the command is typed into that exact surface and submitted.
+    expect(calls[1]).toEqual(['send', '--surface', 'surface:7', "cd '/repo' && exec bash y.sh"]);
+    expect(calls[2]).toEqual(['send-key', '--surface', 'surface:7', 'Return']);
   });
 
   it('createWorkspace throws when the ref is unparsable (fail fast, not undefined)', async () => {
