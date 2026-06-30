@@ -1,18 +1,20 @@
-import type { AgentUsage, EscalationPolicy, PermissionMode } from 'ai-workflow-engine';
+import type { AgentUsage, EscalationPolicy, PermissionMode, SurfaceMeta } from 'ai-workflow-engine';
+
+// Re-export the engine's `SurfaceMeta` rather than redefining it, so the two
+// packages cannot silently drift (the `setMeta` contract spans both).
+export type { SurfaceMeta };
 
 export interface SurfaceRef {
   raw: string;
   ref?: string;
 }
 
-export interface SurfaceMeta {
-  name?: string;
-  description?: string;
-}
-
 export interface SurfaceHost {
   readonly id: string;
   launch(input: { cwd?: string; command: string }): Promise<SurfaceRef>;
+  // Workspace mode is all-or-nothing: a host that supports it MUST implement BOTH
+  // createWorkspace and addSurface (the adapter falls back to launch() otherwise).
+  // setMeta is independent — it relabels an existing workspace.
   createWorkspace?(input: { cwd?: string; command: string; meta?: SurfaceMeta }): Promise<{ workspace: SurfaceRef & { ref: string }; surface: SurfaceRef }>;
   addSurface?(input: { workspaceRef: string; cwd?: string; command: string }): Promise<SurfaceRef>;
   setMeta?(workspaceRef: string, meta: SurfaceMeta): Promise<void>;

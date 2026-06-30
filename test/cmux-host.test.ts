@@ -121,6 +121,18 @@ describe('cmux host workspace verbs', () => {
     expect(calls[0]).toEqual(expect.arrayContaining(['new-surface', '--workspace', 'ws-1', '--cwd', '/repo', '--command', 'bash y.sh']));
   });
 
+  it('createWorkspace throws when the ref is unparsable (fail fast, not undefined)', async () => {
+    const { runner } = recordingRunner({ 'new-workspace': 'Error: socket not found' });
+    const host = makeCmuxHost({ runner });
+    await expect(host.createWorkspace!({ command: 'bash x.sh' })).rejects.toThrow(/could not parse a workspace ref/);
+  });
+
+  it('addSurface throws when the surface ref is unparsable (no silent undefined)', async () => {
+    const { runner } = recordingRunner({ 'new-surface': 'something went wrong' });
+    const host = makeCmuxHost({ runner });
+    await expect(host.addSurface!({ workspaceRef: 'workspace:1', command: 'bash y.sh' })).rejects.toThrow(/could not parse a surface ref/);
+  });
+
   it('setMeta renames and sets description', async () => {
     const { runner, calls } = recordingRunner();
     const host = makeCmuxHost({ runner });
