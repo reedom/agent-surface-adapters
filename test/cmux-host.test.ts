@@ -6,7 +6,21 @@ function recordingRunner(stdoutByVerb: Record<string, string> = {}) {
   const calls: string[][] = [];
   const runner: RunFn = async (_bin, args) => {
     calls.push(args);
-    const verb = args.find((a) => !a.startsWith('--')) ?? '';
+    // Skip the value that follows each global value-flag (--socket VAL, --password VAL)
+    // so the first real subcommand token is treated as the verb.
+    const valueFlags = new Set(['--socket', '--password']);
+    let verb = '';
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (valueFlags.has(arg)) {
+        i++;
+        continue;
+      }
+      if (!arg.startsWith('--')) {
+        verb = arg;
+        break;
+      }
+    }
     return { stdout: stdoutByVerb[verb] ?? '', stderr: '', code: 0 };
   };
   return { runner, calls };
