@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeCmuxHost } from '../src/hosts/cmux.js';
 import type { RunFn } from '../src/core/run.js';
 
+function recordingRunner(stdoutByVerb: Record<string, string> = {}) {
+  const calls: string[][] = [];
+  const runner: RunFn = async (_bin, args) => {
+    calls.push(args);
+    const verb = args.find((a) => !a.startsWith('--')) ?? '';
+    return { stdout: stdoutByVerb[verb] ?? '', stderr: '', code: 0 };
+  };
+  return { runner, calls };
+}
+
 describe('makeCmuxHost', () => {
   it('calls cmux new-workspace with cwd, command and --json, returning a ref', async () => {
     const runner = vi.fn() as unknown as RunFn;
@@ -64,5 +74,36 @@ describe('makeCmuxHost', () => {
     vi.mocked(runner).mockResolvedValue({ stdout: '', stderr: 'no such surface', code: 1 });
     const host = makeCmuxHost({ runner });
     await expect(host.send?.('surface:9', 'hi')).rejects.toThrow(/send failed/);
+  });
+});
+
+describe('cmux host workspace verbs', () => {
+  it('createWorkspace passes --name/--description and resolves the initial surface', async () => {
+    const { runner, calls } = recordingRunner({
+      'new-workspace': JSON.stringify({ workspace_id: 'ws-1' }),
+      'list-pane-surfaces': JSON.stringify({ surfaces: [{ id: 'sf-1' }] }),
+    });
+    const host = makeCmuxHost({ runner });
+    const r = await host.createWorkspace!({ cwd: '/repo', command: 'bash x.sh', meta: { name: 'ABC-1', description: 'do it' } });
+    expect(r.workspace.ref).toBe('ws-1');
+    expect(r.surface.ref).toBe('sf-1');
+    const create = calls.find((c) => c.includes('new-workspace'))!;
+    expect(create).toEqual(expect.arrayContaining(['--name', 'ABC-1', '--description', 'do it', '--cwd', '/repo', '--command', 'bash x.sh', '--json']));
+  });
+
+  it('addSurface targets the parent workspace', async () => {
+    const { runner, calls } = recordingRunner({ 'new-surface': JSON.stringify({ surface: 'sf-2' }) });
+    const host = makeCmuxHost({ runner });
+    const r = await host.addSurface!({ workspaceRef: 'ws-1', cwd: '/repo', command: 'bash y.sh' });
+    expect(r.ref).toBe('sf-2');
+    expect(calls[0]).toEqual(expect.arrayContaining(['new-surface', '--workspace', 'ws-1', '--cwd', '/repo', '--command', 'bash y.sh']));
+  });
+
+  it('setMeta renames and sets description', async () => {
+    const { runner, calls } = recordingRunner();
+    const host = makeCmuxHost({ runner });
+    await host.setMeta!('ws-1', { name: 'ABC-1', description: 'a title' });
+    expect(calls[0]).toEqual(expect.arrayContaining(['rename-workspace', '--workspace', 'ws-1', 'ABC-1']));
+    expect(calls[1]).toEqual(expect.arrayContaining(['workspace-action', '--action', 'set-description', '--workspace', 'ws-1', '--description', 'a title']));
   });
 });
