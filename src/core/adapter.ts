@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AgentResult, AgentSpec, CliAdapter, EscalationPolicy } from 'ai-workflow-engine';
-import type { AgentProfile, SurfaceHost, SurfaceRef } from './types.js';
+import type { AgentProfile, SurfaceHost, SurfaceRef, SurfaceMeta } from './types.js';
 import { agentbusDirective, composeSystemPrompt, schemaDirective } from './prompt.js';
 import { launcherScript, shellQuote } from './launcher.js';
 
@@ -27,10 +27,17 @@ export interface SurfaceAdapterDeps {
   onSurface?: (surface: SurfaceRef) => void;
 }
 
-export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
+export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter & { setMeta(meta: SurfaceMeta): Promise<void> } {
   const nagiInstance = deps.nagiInstance ?? 'nagi';
   const runsDir = deps.runsDir ?? join(homedir(), '.agent-surface-adapters', 'runs');
   const id = deps.id ?? deps.host.id;
+
+  let workspaceRef: string | undefined;
+  let pendingMeta: SurfaceMeta = {};
+  // Workspace mode adds surfaces to a created workspace on the 2nd+ run, so it
+  // requires both verbs; a host with only createWorkspace falls back to launch().
+  const useWorkspaceModel =
+    typeof deps.host.createWorkspace === 'function' && typeof deps.host.addSurface === 'function';
 
   return {
     // schema: structured output is supported via prompt delivery + Stop-hook validation
@@ -79,7 +86,19 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
       const scriptPath = join(runDir, 'launch.sh');
       writeFileSync(scriptPath, launcherScript(deps.agent.bin, args));
 
-      const surface = await deps.host.launch({ cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}` });
+      let surface: SurfaceRef;
+      if (useWorkspaceModel) {
+        if (workspaceRef === undefined) {
+          const ws = await deps.host.createWorkspace!({ cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}`, meta: pendingMeta });
+          workspaceRef = ws.workspace.ref;
+          pendingMeta = {};
+          surface = ws.surface;
+        } else {
+          surface = await deps.host.addSurface!({ workspaceRef, cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}` });
+        }
+      } else {
+        surface = await deps.host.launch({ cwd: spec.cwd, command: `bash ${shellQuote(scriptPath)}` });
+      }
       deps.onSurface?.(surface);
       const result = await deps.awaitResult(runId);
       // A reported `error` (e.g. schema validation failed after all repairs) is the run's
@@ -95,6 +114,19 @@ export function makeSurfaceAdapter(deps: SurfaceAdapterDeps): CliAdapter {
         usage,
         sessionId,
       };
+    },
+    async setMeta(meta: SurfaceMeta): Promise<void> {
+      // Before the workspace exists, buffer ("sticky") so meta is applied at creation.
+      if (workspaceRef === undefined) {
+        pendingMeta = { ...pendingMeta, ...meta };
+        return;
+      }
+      // After creation, pendingMeta is no longer consumed, so a missing setMeta would
+      // silently drop the update — throw loudly instead.
+      if (!deps.host.setMeta) {
+        throw new Error(`host '${deps.host.id}' does not support live setMeta on an existing workspace`);
+      }
+      await deps.host.setMeta(workspaceRef, meta);
     },
   };
 }
